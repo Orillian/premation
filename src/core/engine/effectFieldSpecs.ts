@@ -31,6 +31,7 @@ export interface EffectFieldSpec extends Omit<TextFieldSpec, 'kinds'> {
 export const EFFECT_FIELDS: readonly EffectFieldSpec[] = [
   { path: 'compositing/mask', key: 'maskId', label: 'Effect Mask', type: 'string', default: '' },
   { path: 'compositing/label', key: 'labelColor', label: 'Label', type: 'string', default: '' },
+  { path: 'compositing/subject', key: 'subjectScope', label: 'Apply To', type: 'string', default: '' },
 ];
 
 /** A layer-style switch: `styles/<style>/<key>`, stored under `key` on the style object. */

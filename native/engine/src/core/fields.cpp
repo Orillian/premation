@@ -503,7 +503,9 @@ void write_layer_field(Document& d, std::string_view layer, const PropBinding& b
 // ── effect fields (B3z, effectFieldSpecs.ts) ─────────────────────────────
 
 /// fields.ts `writeEffectField`: Effect Mask ('' = whole layer, else one of the
-/// layer's masks) and the label colour ('' = none, else #rrggbb); '' removes the key.
+/// layer's masks), the label colour ('' = none, else #rrggbb) and Apply To
+/// ('' = the whole layer, 'subject' / 'background' = inside / outside the
+/// layer's subject matte); '' removes the key.
 void write_effect_field(Document& d, std::string_view layer, const PropBinding& b, const FieldRef& f, const api::Value& value) {
   const std::string L(layer);
   if (value.kind() != VK::string) {
@@ -523,6 +525,9 @@ void write_effect_field(Document& d, std::string_view layer, const PropBinding& 
       for (const Json& p : mask->at("paths").arr()) found = found || (p.at("id").is_string() && p.at("id").str() == v);
     }
     if (!found) fail(ErrorCode::not_found, "layer '" + L + "' has no mask '" + v + "'", {.layer = L, .path = b.path});
+  }
+  if (!v.empty() && f.key == "subjectScope" && v != "subject" && v != "background") {
+    fail(ErrorCode::invalid_argument, "'" + b.path + "' takes '', 'subject' or 'background'", {.path = b.path});
   }
   if (!v.empty() && f.key == "labelColor") {
     bool ok = v.size() == 7 && v[0] == '#';

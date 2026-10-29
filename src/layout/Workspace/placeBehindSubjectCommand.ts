@@ -1,9 +1,10 @@
 /**
  * Layer ▸ Place Behind Subject, the context-menu item, and the Assistant's
- * `place_behind_subject`: plan from the selection, build the sandwich
- * (placeBehindSubject.ts), then either the copy already carries the matte,
- * or the matte is made — from a point when one is given (through the shot,
- * as a Tasks-panel job), else by handing the copy to the Object Matte tool.
+ * `place_behind_subject`: plan from the selection, put the layers behind the
+ * footage's subject (placeBehindSubject.ts, no duplicate), then either the
+ * footage already has its subject, or it is made — from a point when one is
+ * given (through the shot, as a Tasks-panel job), else by handing the footage
+ * to the Object Matte tool.
  */
 
 import { engine } from '@core/engine/engineInstance';
@@ -48,7 +49,7 @@ export async function runPlaceBehindSubject(selection: readonly string[], opts: 
     return { ok: true, subject, matte: 'kept' };
   }
   if (!opts.point) {
-    // No matte yet: the copy is the Object Matte tool's target. Click, then Propagate.
+    // No subject yet: the footage is the Object Matte tool's target. Click it, then Follow Through Shot.
     useUIStore.getState().setActiveTool('object-matte');
     useRotoBrushStore.getState().setNode(subject);
     useRotoBrushStore.getState().setStatus(t('workspace.placeBehind.clickSubject', 'Click the subject, then Propagate ◀▶ to cut it out through the shot.'));

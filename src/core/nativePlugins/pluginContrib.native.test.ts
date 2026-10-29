@@ -537,7 +537,8 @@ maybe('native plugins that are not effects (P7)', () => {
       };
       // The summary: {contourPoints, engine, iou, mask: the new mask's id}.
       const outline = async (layer: string, result: string) => {
-        const { mask, ...rest } = JSON.parse(result) as { mask: string };
+        const { mask, ...rest } = JSON.parse(result) as { mask: string; timings?: unknown };
+        delete rest.timings;  // milliseconds (and the candidate scores beside them) differ run to run
         const v = unwrap(await c3.query({ type: 'getPropertyValues', props: [{ layer, path: `masks/${mask}/path` }], time: sec(0.3), evaluated: false })).values[0]!.value as unknown as { value: { vertices: number[] } };
         return { rest, vertices: v.value.vertices };
       };

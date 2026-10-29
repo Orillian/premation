@@ -746,6 +746,20 @@ ResultOf<api::SetLayerMatte> handle(const api::SetLayerMatte& c, HCtx& x) {
     fr.set("src", Json::string(f.src));
     frames.arr_mut().push_back(std::move(fr));
   }
+  const Json& old = require_layer(d, c.layer).fx().at("alphaMatte");
+  if (c.merge && old.is_object() && old.at("frames").is_array()) {
+    // A one-frame subject edit: the stored frames at other times stay, sorted by time.
+    constexpr double kSameFrame = 1e-4;  // the same comp frame maps to the same keyframe time
+    Json kept = Json::array();
+    for (const Json& o : old.at("frames").arr()) {
+      if (!o.at("t").is_number()) continue;
+      const bool replaced = std::ranges::any_of(frames.arr(), [&](const Json& n) { return std::abs(n.at("t").num() - o.at("t").num()) < kSameFrame; });
+      if (!replaced) kept.arr_mut().push_back(o);
+    }
+    for (Json& n : frames.arr_mut()) kept.arr_mut().push_back(std::move(n));
+    std::ranges::stable_sort(kept.arr_mut(), [](const Json& a, const Json& b) { return a.at("t").num() < b.at("t").num(); });
+    frames = std::move(kept);
+  }
   Json record = Json::object();
   record.set("frames", std::move(frames));
   if (footage) {
@@ -766,6 +780,8 @@ ResultOf<api::SetLayerMatte> handle(const api::SetLayerMatte& c, HCtx& x) {
       e.set("id", Json::string(id));
       e.set("type", Json::string("object-matte"));
       e.set("params", new_instance_params_of(*def));
+      // A subject selection (cut: false) makes the card off: the footage shows whole until Remove Background.
+      if (c.cut.has_value() && !*c.cut) e.set("enabled", Json::boolean(false));
       effects.insert(effects.begin(), std::move(e));
       write_node_effects(d, c.layer, std::move(effects));
     }

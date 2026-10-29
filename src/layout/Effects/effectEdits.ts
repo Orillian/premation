@@ -401,7 +401,7 @@ function snapshotAddCommand(item: CopiedEffect, layers: string[]): Command | nul
   const e: Effect = item.effect;
   const def = effectDefFor(e.type);
   if (!def || Object.keys(item.tracks).length > 0) return null;
-  if (e.enabled === false || e.opacity !== undefined || e.maskId !== undefined || e.labelColor !== undefined) return null;
+  if (e.enabled === false || e.opacity !== undefined || e.maskId !== undefined || e.labelColor !== undefined || e.subjectScope !== undefined) return null;
   if (typeof e.amount === 'number') return null;
   const declared = new Set(def.params.map((p) => p.key));
   if (Object.keys(e.params ?? {}).some((k) => !declared.has(k))) return null;
@@ -611,7 +611,7 @@ export function setFrameBlendEdit(nodeId: string, blend: StoredFrameBlend): Prom
 // (B3z-a: closed engine gaps — effectsB3za.test.ts pins the engine side)
 // ════════════════════════════════════════════════════════════════════════
 
-const effectField = (nodeId: string, effectId: string, field: 'mask' | 'label') =>
+const effectField = (nodeId: string, effectId: string, field: 'mask' | 'label' | 'subject') =>
   ref(nodeId, `${paths.effectGroup(effectId)}/compositing/${field}`);
 
 /** Effect Opacity's static value; `undefined` = Reset (100, which the engine stores as absent). */
@@ -637,6 +637,11 @@ export function effectOpacityStopwatchEdit(nodeId: string, effect: Effect, secon
 /** Compositing Options › Effect Mask (`undefined` = the whole layer). */
 export function setEffectMaskEdit(nodeId: string, effectId: string, maskId: string | undefined): Promise<unknown> {
   return edit('Set effect mask', { type: 'setProperty', prop: effectField(nodeId, effectId, 'mask'), value: values.string(maskId ?? '') });
+}
+
+/** Compositing Options › Apply To: the layer's subject, its background, or (`undefined`) the whole layer. */
+export function setEffectSubjectScopeEdit(nodeId: string, effectId: string, scope: 'subject' | 'background' | undefined): Promise<unknown> {
+  return edit(t('effects.stack.applyToLabel', 'Apply Effect To'), { type: 'setProperty', prop: effectField(nodeId, effectId, 'subject'), value: values.string(scope ?? '') });
 }
 
 /** The label colour of one applied effect (`undefined` = none). */

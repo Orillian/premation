@@ -1327,6 +1327,7 @@ add_library(engine_jobs_core STATIC
   src/jobs/planar_track.cpp
   src/jobs/face_mesh.cpp
   src/jobs/matte_refine.cpp
+  src/jobs/subject_edit.cpp
   src/jobs/stabilize.cpp
   src/jobs/track_apply.cpp
   src/jobs/track_plans.cpp
@@ -1457,7 +1458,7 @@ else()
 endif()
 
 if(MOTION_BUILD_TESTS)
-  add_executable(engine_jobs_tests tests/test_jobs_audio.cpp tests/test_jobs_trace.cpp tests/test_jobs_tracking.cpp tests/test_track_feature.cpp tests/test_camera_track.cpp tests/test_planar_track.cpp tests/test_matte_refine.cpp tests/test_face_mesh.cpp
+  add_executable(engine_jobs_tests tests/test_jobs_audio.cpp tests/test_jobs_trace.cpp tests/test_jobs_tracking.cpp tests/test_track_feature.cpp tests/test_camera_track.cpp tests/test_planar_track.cpp tests/test_matte_refine.cpp tests/test_subject_edit.cpp tests/test_face_mesh.cpp
                                  tests/test_jobs_round2.cpp tests/test_roto_matte.cpp tests/test_content_aware.cpp
                                  tests/test_reframe_path.cpp tests/test_saliency.cpp
                                  tests/test_reframe_analyse.cpp tests/test_job_retime.cpp

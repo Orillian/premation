@@ -224,13 +224,18 @@ void MemoryBank::place_pointer_pos(std::span<const float> pointerPos, Assembled&
 }
 
 bool Tracker::step(std::span<const std::uint8_t> rgba, std::uint32_t width, std::uint32_t height, std::span<const Prompt> prompts,
-                   FrameResult& out, std::string& error) {
+                   FrameResult& out, std::string& error, std::span<const float> mask) {
   if (width == 0 || height == 0) {
     error = "empty frame";
     return false;
   }
+  const bool given = !mask.empty();
+  if (given && mask.size() != static_cast<std::size_t>(width) * height) {
+    error = "the mask is not the frame's size";
+    return false;
+  }
   const bool first = bank_.empty();
-  if (first && prompts.empty()) {
+  if (first && prompts.empty() && !given) {
     error = "the first frame needs a prompt";
     return false;
   }
@@ -275,9 +280,21 @@ bool Tracker::step(std::span<const std::uint8_t> rgba, std::uint32_t width, std:
     return false;
   }
   out.decodeMs = ms_since(t0);
+  if (given) {
+    // SAM 2's _use_mask_as_output: the mask as 1024² logits (×20 − 10), the object present.
+    constexpr auto in = static_cast<std::size_t>(kInput);
+    for (std::size_t y = 0; y < in; ++y) {
+      const std::size_t sy = std::min<std::size_t>(height - 1, y * height / in);
+      for (std::size_t x = 0; x < in; ++x) {
+        const std::size_t sx = std::min<std::size_t>(width - 1, x * width / in);
+        dec.highRes[y * in + x] = mask[sy * width + sx] * 20.0F - 10.0F;
+      }
+    }
+    dec.objectScore = std::max(dec.objectScore, 10.0F);
+  }
 
   t0 = std::chrono::steady_clock::now();
-  const bool conditioning = !prompts.empty();
+  const bool conditioning = !prompts.empty() || given;
   Memory mem;
   if (!models_.encode_memory(vision_.feats2, dec.highRes, dec.objectScore, conditioning, mem, error)) return false;
   if (mem.tokens.size() != kTokens * kMemDim || mem.pos.size() != kTokens * kMemDim) {
@@ -288,7 +305,11 @@ bool Tracker::step(std::span<const std::uint8_t> rgba, std::uint32_t width, std:
   bank_.add(step_, std::move(mem), dec.pointer, conditioning);
   ++step_;
 
-  logits_to_alpha(dec.highRes, width, height, out.alpha);
+  if (given) {
+    out.alpha.assign(mask.begin(), mask.end());
+  } else {
+    logits_to_alpha(dec.highRes, width, height, out.alpha);
+  }
   out.iou = dec.iou;
   out.objectScore = dec.objectScore;
   out.conditioning = conditioning;

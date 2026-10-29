@@ -174,9 +174,12 @@ class Tracker {
       : models_(models), constants_(std::move(constants)), bank_(frameCount) {}
 
   /// Track the next frame of the walk (RGBA8 width×height). `prompts` non-empty
-  /// makes it a conditioning frame (required on the first). False with `error`.
+  /// makes it a conditioning frame (required on the first). `mask` (width×height,
+  /// 0…1) makes the frame's matte the user's own — SAM 2's add_new_mask: it is the
+  /// output and goes into memory as given (the prompts only find the object
+  /// pointer). False with `error`.
   bool step(std::span<const std::uint8_t> rgba, std::uint32_t width, std::uint32_t height, std::span<const Prompt> prompts,
-            FrameResult& out, std::string& error);
+            FrameResult& out, std::string& error, std::span<const float> mask = {});
   [[nodiscard]] std::int64_t steps() const noexcept { return step_; }
 
  private:

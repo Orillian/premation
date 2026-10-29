@@ -88,6 +88,7 @@ import {
   setEffectLabelColorEdit,
   setEffectMaskEdit,
   setEffectOpacityEdit,
+  setEffectSubjectScopeEdit,
   nudgeEffectEdit,
   paramCommands,
   paramStopwatchCommands,
@@ -326,6 +327,39 @@ function EffectMaskRow({ nodeId, effect }: { nodeId: string; effect: Effect }): 
 }
 
 /**
+ * Compositing Options › Apply To: the whole layer, its subject (the Object
+ * Matte selection) or everything but it — "colour only the person", "blur
+ * only the background" without a duplicate layer. Shown on footage that has
+ * a subject, and wherever it is already set.
+ */
+function ApplyToRow({ nodeId, effect }: { nodeId: string; effect: Effect }): JSX.Element | null {
+  const hasSubject = mirrorMaskHeaders(documentMirror().tree(nodeId)).some((p) => p.name === 'Object Matte');
+  if (!hasSubject && effect.subjectScope === undefined) return null;
+  return (
+    <ParamLine>
+      <div className={row.paramRow}>
+        <div style={{ width: 14 }} />
+        <span className={row.paramLabel}>{t('effects.stack.applyTo', 'Apply To')}</span>
+        <select
+          value={effect.subjectScope ?? ''}
+          onChange={(ev) => {
+            const v = ev.currentTarget.value;
+            void setEffectSubjectScopeEdit(nodeId, effect.id, v === 'subject' || v === 'background' ? v : undefined);
+          }}
+          aria-label={t('effects.stack.applyToAria', '{type} applies to', { type: effect.type })}
+          title={t('effects.stack.applyToTitle', 'Where this effect lands: the whole layer, only the selected subject, or everything except the subject.')}
+          className={panel.paramSelect}
+        >
+          <option value="">{t('effects.stack.applyToLayer', 'Whole Layer')}</option>
+          <option value="subject">{t('effects.stack.applyToSubject', 'Subject')}</option>
+          <option value="background">{t('effects.stack.applyToBackground', 'Background')}</option>
+        </select>
+      </div>
+    </ParamLine>
+  );
+}
+
+/**
  * AE's Compositing Options section: WHERE this effect applies (Effect Mask) and
  * HOW MUCH of it applies (Effect Opacity). One section, because they are the
  * same question asked over space and over strength, and the bake answers both
@@ -335,10 +369,11 @@ function EffectMaskRow({ nodeId, effect }: { nodeId: string; effect: Effect }): 
  * does not hide the reason it looks the way it does behind a collapsed group.
  */
 function CompositingOptions({ nodeId, effect }: { nodeId: string; effect: Effect }): JSX.Element {
-  const inUse = effect.maskId !== undefined || effect.opacity !== undefined;
+  const inUse = effect.maskId !== undefined || effect.opacity !== undefined || effect.subjectScope !== undefined;
   return (
     <ParamGroup name={t('effects.stack.compositingOptions', 'Compositing Options')} defaultOpen={inUse}>
       <EffectOpacityRow nodeId={nodeId} effect={effect} />
+      <ApplyToRow nodeId={nodeId} effect={effect} />
       <EffectMaskRow nodeId={nodeId} effect={effect} />
     </ParamGroup>
   );

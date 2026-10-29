@@ -1151,6 +1151,38 @@ bool from_u32(std::uint32_t n, StabilizeFraming& out) noexcept {
     default: return false;
   }
 }
+std::string_view to_string(SubjectTool v) noexcept {
+  switch (v) {
+    case SubjectTool::segment: return "segment";
+    case SubjectTool::paint: return "paint";
+    case SubjectTool::refine: return "refine";
+  }
+  return {};
+}
+bool from_u32(std::uint32_t n, SubjectTool& out) noexcept {
+  switch (n) {
+    case 0: out = SubjectTool::segment; return true;
+    case 1: out = SubjectTool::paint; return true;
+    case 2: out = SubjectTool::refine; return true;
+    default: return false;
+  }
+}
+std::string_view to_string(SubjectOp v) noexcept {
+  switch (v) {
+    case SubjectOp::replace: return "replace";
+    case SubjectOp::add: return "add";
+    case SubjectOp::subtract: return "subtract";
+  }
+  return {};
+}
+bool from_u32(std::uint32_t n, SubjectOp& out) noexcept {
+  switch (n) {
+    case 0: out = SubjectOp::replace; return true;
+    case 1: out = SubjectOp::add; return true;
+    case 2: out = SubjectOp::subtract; return true;
+    default: return false;
+  }
+}
 std::string_view to_string(FaceTrackMode v) noexcept {
   switch (v) {
     case FaceTrackMode::outline: return "outline";
@@ -11420,10 +11452,13 @@ Status decode(wire::Reader& r, ContentAwareFillFrame& out) {
 void encode(wire::Writer& w, const SetLayerMatte& v) {
   w.varint(10U); w.str(v.layer);
   for (const auto& e : v.frames) { w.varint(18U); { const std::size_t s = w.begin_ld(); encode(w, e); w.end_ld(s); } }
+  w.varint(24U); w.boolean(v.merge);
+  if (v.cut.has_value()) { w.varint(32U); w.boolean(*v.cut); }
 }
 
 Status decode(wire::Reader& r, SetLayerMatte& out) {
   bool has_layer = false;
+  bool has_merge = false;
   while (!r.at_end()) {
     std::uint64_t key = 0;
     if (!r.varint(key)) return Status::truncated;
@@ -11438,12 +11473,24 @@ Status decode(wire::Reader& r, SetLayerMatte& out) {
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         break;
       }
+      case 24U: {
+        if (!r.boolean(out.merge)) return Status::truncated;
+        has_merge = true;
+        break;
+      }
+      case 32U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.cut = std::move(e);
+        break;
+      }
       default:
         if (!r.skip(key)) return Status::truncated;
         break;
     }
   }
   if (!has_layer) return Status::missing_field;
+  if (!has_merge) return Status::missing_field;
   return Status::ok;
 }
 
@@ -11958,6 +12005,54 @@ Status decode(wire::Reader& r, MatteRefine& out) {
   return Status::ok;
 }
 
+void encode(wire::Writer& w, const SubjectEdit& v) {
+  w.varint(8U); w.varint(static_cast<std::uint32_t>(v.tool));
+  w.varint(16U); w.varint(static_cast<std::uint32_t>(v.op));
+  w.varint(25U); w.f64(v.radius);
+  w.varint(32U); w.boolean(v.cut);
+}
+
+Status decode(wire::Reader& r, SubjectEdit& out) {
+  bool has_tool = false;
+  bool has_op = false;
+  bool has_radius = false;
+  bool has_cut = false;
+  while (!r.at_end()) {
+    std::uint64_t key = 0;
+    if (!r.varint(key)) return Status::truncated;
+    switch (key) {
+      case 8U: {
+        { std::uint32_t n = 0; if (!r.u32(n)) return Status::bad_value; if (!from_u32(n, out.tool)) return Status::bad_enum; }
+        has_tool = true;
+        break;
+      }
+      case 16U: {
+        { std::uint32_t n = 0; if (!r.u32(n)) return Status::bad_value; if (!from_u32(n, out.op)) return Status::bad_enum; }
+        has_op = true;
+        break;
+      }
+      case 25U: {
+        if (!r.f64(out.radius)) return Status::truncated;
+        has_radius = true;
+        break;
+      }
+      case 32U: {
+        if (!r.boolean(out.cut)) return Status::truncated;
+        has_cut = true;
+        break;
+      }
+      default:
+        if (!r.skip(key)) return Status::truncated;
+        break;
+    }
+  }
+  if (!has_tool) return Status::missing_field;
+  if (!has_op) return Status::missing_field;
+  if (!has_radius) return Status::missing_field;
+  if (!has_cut) return Status::missing_field;
+  return Status::ok;
+}
+
 void encode(wire::Writer& w, const ObjectMatteJob& v) {
   w.varint(10U); w.str(v.layer);
   w.varint(18U); { const std::size_t s = w.begin_ld(); encode(w, v.range); w.end_ld(s); }
@@ -11976,6 +12071,7 @@ void encode(wire::Writer& w, const ObjectMatteJob& v) {
   if (v.refine.has_value()) { w.varint(5714U); { const std::size_t s = w.begin_ld(); encode(w, *v.refine); w.end_ld(s); } }
   if (v.output_folder.has_value()) { w.varint(5722U); w.str(*v.output_folder); }
   if (v.origin.has_value()) { w.varint(5728U); w.svarint(*v.origin); }
+  if (v.edit.has_value()) { w.varint(5738U); { const std::size_t s = w.begin_ld(); encode(w, *v.edit); w.end_ld(s); } }
 }
 
 Status decode(wire::Reader& r, ObjectMatteJob& out) {
@@ -12079,6 +12175,12 @@ Status decode(wire::Reader& r, ObjectMatteJob& out) {
         Time e = 0;
         if (!r.svarint(e)) return Status::truncated;
         out.origin = std::move(e);
+        break;
+      }
+      case 5738U: {
+        SubjectEdit e;
+        { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
+        out.edit = std::move(e);
         break;
       }
       default:
@@ -33039,7 +33141,7 @@ Status roundtrip(std::span<const std::uint8_t> bytes, std::vector<std::uint8_t>&
   out = w.take();
   return Status::ok;
 }
-constexpr std::array<std::string_view, 569> kNames = {
+constexpr std::array<std::string_view, 570> kNames = {
     "Empty",
     "Vec2",
     "Vec3",
@@ -33312,6 +33414,7 @@ constexpr std::array<std::string_view, 569> kNames = {
     "AutoTraceJob",
     "SceneDetectJob",
     "ObjectMatteJob",
+    "SubjectEdit",
     "ObjectMatteStroke",
     "MatteRefine",
     "FaceTrackJob",
@@ -33887,6 +33990,7 @@ Status roundtrip_by_name(std::string_view type, std::span<const std::uint8_t> by
   if (type == "AutoTraceJob") return roundtrip<AutoTraceJob>(bytes, out);
   if (type == "SceneDetectJob") return roundtrip<SceneDetectJob>(bytes, out);
   if (type == "ObjectMatteJob") return roundtrip<ObjectMatteJob>(bytes, out);
+  if (type == "SubjectEdit") return roundtrip<SubjectEdit>(bytes, out);
   if (type == "ObjectMatteStroke") return roundtrip<ObjectMatteStroke>(bytes, out);
   if (type == "MatteRefine") return roundtrip<MatteRefine>(bytes, out);
   if (type == "FaceTrackJob") return roundtrip<FaceTrackJob>(bytes, out);

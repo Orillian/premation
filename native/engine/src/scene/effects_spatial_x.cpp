@@ -1559,12 +1559,16 @@ std::vector<float> particle_world_data(const Params& P, const RLayer& l) {
 // angle about the matte's centroid, a 256-column reduction) → its glow (a
 // Gaussian of the band) → composited on the input, behind it (an outside
 // stroke of the layer's own alpha) or alone.
-api::RenderEffect matte_stroke(const Params& P, Box b) {
+api::RenderEffect matte_stroke(const Params& P, Box b, const Ctx& c) {
   Graph g("matte-stroke", b.lw, b.lh);
   const std::string matte = P.layer("matteLayerId");
-  const bool own = matte.empty();
-  if (!own) g.map(0, matte);
-  const int src = own ? fxg::IN : fxg::MAP;
+  // No Matte Layer: the layer's subject (its Object Matte frame) when it has one — a stroke
+  // around the person, not around the footage's rectangle — else the layer's own alpha.
+  const bool subject = matte.empty() && c.l.objectMatteSrc.has_value();
+  const bool own = matte.empty() && !subject;
+  if (!matte.empty()) g.map(0, matte);
+  if (subject) g.mask(0, object_matte_key(c.l.id));
+  const int src = own ? fxg::IN : subject ? fxg::MASK0 : fxg::MAP;
   const double w = std::max(0.0, P.n("width"));
   const double soft = std::max(0.0, P.n("softness"));
   const int pos = std::clamp(P.e("position"), 0, 2);
@@ -1712,7 +1716,7 @@ bool pack(std::string_view t, const Params& P, Box b, const Ctx& c, Out& out) {
   else if (t == "liquid-morph") out.push_back(liquid_morph(P, b));
   else if (t == "bend-it") out.push_back(bend_it(P, b));
   else if (t == "bender") out.push_back(bender(P, b));
-  else if (t == "matte-stroke") out.push_back(matte_stroke(P, b));
+  else if (t == "matte-stroke") out.push_back(matte_stroke(P, b, c));
   else if (t == "selective-color-ai") out.push_back(selective_color_ai(P, b, c));
   else if (t == "object-matte") object_matte(P, b, c, out);
   else return false;
@@ -1755,6 +1759,11 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
   for (const Json& e : l.effects) {
     if (!effect_enabled(e) || !e.at("type").is_string()) continue;
     const std::string_view t = e.at("type").str();
+    if (subject_scope_of(e) != 0 && l.objectMatteSrc) {
+      // Any effect applied to the Subject / Background reads the layer's Object Matte frame as its scope.
+      std::string key = object_matte_key(l.id);
+      if (std::ranges::none_of(out, [&](const DeepFxTexture& d) { return d.key == key; })) out.push_back({std::move(key), Json(), {}, *l.objectMatteSrc});
+    }
     if (!spatial_x_handles(t)) continue;
     const Json params = doc::params_of(e);
     const Params P{params};
@@ -1773,7 +1782,9 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
         std::vector<float> d = stroke3d_data(P, l, *path);
         if (!d.empty()) out.push_back({data_key(c, "stroke"), Json(), std::move(d), {}});
       }
-    } else if (((t == "selective-color-ai" && P.layer("matteLayerId").empty()) || t == "object-matte") && l.objectMatteSrc) {
+    } else if (((t == "selective-color-ai" && P.layer("matteLayerId").empty()) || (t == "matte-stroke" && P.layer("matteLayerId").empty()) ||
+                t == "object-matte") &&
+               l.objectMatteSrc) {
       // The layer's own Object Matte frame, read as a matte (one texture however many effects read it).
       std::string key = object_matte_key(l.id);
       if (std::ranges::none_of(out, [&](const DeepFxTexture& d) { return d.key == key; })) out.push_back({std::move(key), Json(), {}, *l.objectMatteSrc});
@@ -1787,8 +1798,8 @@ std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l) {
 bool reads_own_object_matte(const RLayer& l) {
   return std::ranges::any_of(l.effects, [](const Json& e) {
     if (!effect_enabled(e) || !e.at("type").is_string()) return false;
-    if (e.at("type").str() == "object-matte") return true;
-    if (e.at("type").str() != "selective-color-ai") return false;
+    if (e.at("type").str() == "object-matte" || subject_scope_of(e) != 0) return true;
+    if (e.at("type").str() != "selective-color-ai" && e.at("type").str() != "matte-stroke") return false;
     const Json params = doc::params_of(e);
     return Params{params}.layer("matteLayerId").empty();
   });

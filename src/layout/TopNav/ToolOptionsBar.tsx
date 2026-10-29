@@ -30,6 +30,7 @@ import { useRotoBrushStore } from '@stores/rotoBrushStore';
 import { propagateObjectMatte, propagateRotoForward, rotoFreezeEdit, rotoMattes } from '@core/workspace/rotoBrushTool';
 import { edit } from '@core/engine/uiEdits';
 import { useMirrorTree } from '@hooks/useMirror';
+import { mirrorMaskHeaders } from '@core/mirror/effects';
 import { playheadSeconds } from '@core/timeline/timelineView';
 import { settingsDurationSeconds, settingsFps, settingsSetWorkArea } from '@core/mirror/compFacts';
 import { activeCompSettingsNow } from '@hooks/useMirrorFrame';
@@ -420,7 +421,9 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
   const frozen = mattes.frozen.length > 0;
   const matteCard = nodeId && rotoTree ? objectMatteCard(nodeId) : null;
   const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0);
-  const canPropagate = !!nodeId && (strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;
+  // A subject on the layer (its "Object Matte" outline) is where propagation starts, strokes or not.
+  const hasSubject = !!nodeId && !!rotoTree && mirrorMaskHeaders(rotoTree).some((m) => m.name === 'Object Matte');
+  const canPropagate = !!nodeId && (hasSubject || strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;
   // The Object Matte tool always follows with the model; the brush has the choice.
   const engine = useRotoBrushStore((s) => (objectMatteTool || brush ? 'objectMatte' : s.engine));
   const refine = useRotoBrushStore((s) => s.refine);
@@ -497,11 +500,11 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
           <ValueField value={size} unit="px" min={2} max={200} precision={0} onChange={(v) => useRotoBrushStore.getState().setSize(Number(v))} />
         </Row>
         <span className={styles.hint} title={brush === 'exact'
-          ? t('topNav.roto.selectionBrushHint', 'Paint to add to the selection exactly; Alt-paint erases. No edge snapping.')
-          : t('topNav.roto.refineEdgeHint', 'Paint over hair or fur: the brush sets the refined edge width, used when you Propagate.')}>
+          ? t('topNav.roto.selectionBrushPaintHint', 'Paints the selection exactly where you brush; Alt-paint erases. No edge snapping.')
+          : t('topNav.roto.refineEdgeBandHint', 'Paint along hair or fur: the edge under the brush becomes soft, strand by strand.')}>
           {brush === 'exact'
-            ? t('topNav.roto.selectionBrushHint', 'Paint to add to the selection exactly; Alt-paint erases. No edge snapping.')
-            : t('topNav.roto.refineEdgeHint', 'Paint over hair or fur: the brush sets the refined edge width, used when you Propagate.')}
+            ? t('topNav.roto.selectionBrushPaintHint', 'Paints the selection exactly where you brush; Alt-paint erases. No edge snapping.')
+            : t('topNav.roto.refineEdgeBandHint', 'Paint along hair or fur: the edge under the brush becomes soft, strand by strand.')}
         </span>
       </>) : null}
       {brush ? null : objectMatteTool ? (<>

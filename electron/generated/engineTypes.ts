@@ -490,6 +490,18 @@ export type StabilizeFraming =
   | 'cropAutoScale';
 export const StabilizeFramingValues = ['stabilizeOnly', 'stabilizeCrop', 'cropAutoScale'] as const;
 
+export type SubjectTool =
+  | 'segment'
+  | 'paint'
+  | 'refine';
+export const SubjectToolValues = ['segment', 'paint', 'refine'] as const;
+
+export type SubjectOp =
+  | 'replace'
+  | 'add'
+  | 'subtract';
+export const SubjectOpValues = ['replace', 'add', 'subtract'] as const;
+
 /** AE parity 3.3: `outline` follows the face's outline as one mask; `detailed` adds masks for the eyes, brows and mouth and nulls for the eyes, pupils, nose tip, mouth corners and chin. */
 export type FaceTrackMode =
   | 'outline'
@@ -3127,6 +3139,15 @@ export interface ObjectMatteJob {
   outputFolder?: string;
   /** Video: the frame `prompts` / `box` are given at (default `range.start`). */
   origin?: Time;
+  /** One frame (no `direction`): edit the layer's SUBJECT — its soft raster matte at `range.start` (setLayerMatte, merged with the other frames) — instead of writing a mask. `tool` segment: the model from `prompts` / `box` / this frame's `strokes` (sparse-sampled); paint: the strokes' brush (radius `radius` layer px) painted exactly; refine: soft alpha estimated against the picture inside the strokes' band. `op` replace / add / subtract against the frame's current matte. The outline is kept as the "Object Matte" mask (mode none). `cut`: a newly made Object Matte effect cuts the layer (default false: the subject is a selection; Remove Background turns the effect on). */
+  edit?: SubjectEdit;
+}
+
+export interface SubjectEdit {
+  tool: SubjectTool;
+  op: SubjectOp;
+  radius: number;
+  cut: boolean;
 }
 
 /** A correction stroke on one frame (AE parity 3.1). */
@@ -3357,10 +3378,15 @@ export interface GetCameraSolve {
   layer: LayerId;
 }
 
-/** A per-frame soft matte on a layer (AE parity 3.2; the video object matte job's result): each frame is the layer's CUT-OUT picture (straight RGBA: the refined, decontaminated subject over transparency), and the frame nearest the layer's time stands in for its footage, as Content-Aware Fill frames do. Empty `frames` clears it. Inverse: the previous record. */
+/**
+ * A per-frame soft matte on a layer (AE parity 3.2; the video object matte job's result): each frame is the layer's CUT-OUT picture (straight RGBA: the refined, decontaminated subject over transparency), and the frame nearest the layer's time stands in for its footage, as Content-Aware Fill frames do. Empty `frames` clears it. Inverse: the previous record.
+ * `merge`: `frames` replace only the stored frames at their times (the rest kept). `cut` (absent = true): a newly made Object Matte effect is enabled (the matte cuts the layer); false = it is made disabled (the matte is a selection other effects read).
+ */
 export interface SetLayerMatte {
   layer: LayerId;
   frames: ContentAwareFillFrame[];
+  merge: boolean;
+  cut?: boolean;
 }
 
 /**

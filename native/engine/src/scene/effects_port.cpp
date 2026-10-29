@@ -371,6 +371,8 @@ bool effects_need_cpu_bake(const std::vector<Json>& effects) {
     if (keying_needs_cpu(e)) return true;
     if (deformation_needs_cpu(e)) return true;
     if (e.at("maskId").is_string() && !e.at("maskId").str().empty()) return true;
+    // Apply To (the subject or its background): blended back through the subject matte on the GPU route, as a mask scope is.
+    if (subject_scope_of(e) != 0) return true;
     const bool hasOpacity = e.at("opacity").is_number() && std::isfinite(e.at("opacity").num());
     if (hasOpacity && !gpu_blends_effect_opacity(t)) return true;
     // effectFollowsPath: Write-on's brush form (writeOnUsesBrush, read through paramsOf).
@@ -921,6 +923,16 @@ const Json* scope_path_of(const RLayer& l, const Json& e) {
   return nullptr;
 }
 
+}  // namespace
+
+int subject_scope_of(const Json& e) {
+  const Json& s = e.at("subjectScope");
+  if (!s.is_string()) return 0;
+  return s.str() == "subject" ? 1 : s.str() == "background" ? 2 : 0;
+}
+
+namespace {
+
 /// effectOpacityOf: a finite `opacity` → clamp(pct / 100); absent → nullopt.
 std::optional<double> effect_opacity_of(const Json& e) {
   const Json& op = e.at("opacity");
@@ -1299,11 +1311,19 @@ std::vector<api::RenderEffect> extract_gpu_route_effects(const RLayer& l) {
       out.resize(at);
       continue;
     }
-    const bool blends = (a && *a < 1) || scope != nullptr;
+    // Apply to: Subject / Background — the layer's subject matte (its Object Matte frame) scopes the
+    // effect like a mask path does; Background blends through its inverse. No frame: unscoped.
+    const int subject = subject_scope_of(e);
+    const bool bySubject = scope == nullptr && subject != 0 && l.objectMatteSrc.has_value();
+    const bool blends = (a && *a < 1) || scope != nullptr || bySubject;
     if (a && *a < 1) add_param(out[at], "effectOpacity", *a);
     if (scope != nullptr) {
       add_text(out[at], "scopeMaskKey", scope_mask_key(l.id, scope->at("id").str()));
       if (!a) add_param(out[at], "effectOpacity", 1);  // the scoped blend-back runs even at full opacity
+    } else if (bySubject) {
+      add_text(out[at], "scopeMaskKey", object_matte_key(l.id));
+      if (subject == 2) add_param(out[at], "scopeInvert", 1);
+      if (!a) add_param(out[at], "effectOpacity", 1);
     }
     // Several entries: the blend covers them all (the chain keeps the input
     // until the last one) — applyEffectChain blends the whole effect back.

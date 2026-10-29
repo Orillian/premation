@@ -1,26 +1,22 @@
 /**
- * Place behind subject — the "text behind the person" sandwich in one step.
+ * Place behind subject — "text behind the person", without a second copy of
+ * the video.
  *
- * Neither After Effects nor Premiere has this as a command; their tutorials
- * all do the same three things by hand, and that is what this does, as ONE
- * undo entry:
+ * After Effects, Premiere, Resolve and CapCut all teach the same sandwich:
+ * duplicate the clip, cut the subject out of the top copy, put the text
+ * between. Here the chosen layers (text, shapes, anything) get Behind Subject
+ * (`layer/behindSubject`) naming the footage, and move directly above it: the
+ * engine hides them wherever the footage's subject matte is (its soft alpha,
+ * hair included) — one video, one matte, one undo entry.
  *
- *   1. duplicate the footage layer (the copy lands directly above it)
- *   2. the COPY keeps the subject's matte (the Object Matte cut-out and its
- *      "Roto Brush" / "Object Matte" masks); the ORIGINAL loses them, so it is
- *      the whole picture again
- *   3. the chosen layers (text, shapes, anything) move between the two:
- *      original, then them, then the cut-out copy on top
- *
- * When the footage has no matte yet, the sandwich is still built and the copy
- * is handed to the Object Matte tool: click the subject, then Propagate. The
- * Assistant's `place_behind_subject` tool can pass a point instead, and the
- * matte is then made through the shot without a click.
+ * When the footage has no subject yet the layers are still placed and the
+ * Object Matte tool takes over: click the subject. The Assistant's
+ * `place_behind_subject` tool can pass a point instead, and the matte is then
+ * made through the shot without a click.
  */
 
 import type { Command } from '@motion/engine-api';
-import { engine, engineIdle } from '@core/engine/engineInstance';
-import { reportEngineError } from '@core/engine/uiEdits';
+import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
 import { childOrderOf } from '@core/mirror/layerTree';
@@ -91,68 +87,33 @@ export function planPlaceBehindSubject(selection: readonly string[]): PlanResult
 }
 
 export interface PlaceBehindResult {
-  /** The cut-out copy on top. */
+  /** The footage layer whose subject they are behind. */
   subject: string;
-  /** Whether the footage already had a matte the copy now carries. */
+  /** Whether the footage already had a subject (else the Object Matte tool is next). */
   hadMatte: boolean;
 }
 
-/**
- * Build the sandwich (one entry). Resolves the copy's id, or null when the
- * engine refused (already reported).
- */
+/** The commands that put `plan.behind` behind the footage's subject (Behind Subject + directly above it). */
+export function placeBehindCommands(plan: SubjectPlan): Command[] {
+  const m = documentMirror();
+  const out: Command[] = plan.behind.map((id) => ({
+    type: 'setProperty' as const, prop: { layer: id, path: paths.layerParam('behindSubject') }, value: { kind: 'string' as const, value: plan.footage },
+  }));
+  const kids = childOrderOf(m, plan.parent);
+  const moving = new Set(plan.behind);
+  const rest = kids.filter((id) => !moving.has(id));
+  const at = rest.indexOf(plan.footage);
+  const next = [...rest.slice(0, at + 1), ...plan.behind, ...rest.slice(at + 1)];
+  out.push(...reorderCommands(plan.comp, plan.parent, kids, next, moving));
+  return out;
+}
+
+/** Place the layers behind the subject (one entry). Null when the engine refused (already reported). */
 export async function placeBehindSubjectEdit(plan: SubjectPlan): Promise<PlaceBehindResult | null> {
   const m = documentMirror();
   await m.loadTrees([plan.footage]);
-  const masks = mirrorMaskHeaders(m.tree(plan.footage)).filter((x) => MATTE_MASK_NAMES.has(x.name));
-  const hadMatte = masks.length > 0;
+  const hadMatte = mirrorMaskHeaders(m.tree(plan.footage)).some((x) => MATTE_MASK_NAMES.has(x.name));
   const label = t('workspace.placeBehind.label', 'Place Behind Subject');
-  const client = engine();
-  const opened = await client.beginGesture(label);
-  if (!opened.ok) {
-    reportEngineError(label, opened.error);
-    return null;
-  }
-  let ok = false;
-  let subject: string | null = null;
-  try {
-    const dup = await client.execute({ type: 'duplicateLayers', layers: [plan.footage] });
-    if (!dup.ok) {
-      reportEngineError(label, dup.error);
-      return null;
-    }
-    subject = (dup.value as { layers?: string[] }).layers?.[0] ?? null;
-    if (!subject) return null;
-    await engineIdle();
-    const src = m.layer(plan.footage);
-    const follow: Command[] = [
-      { type: 'renameLayer', layer: subject, name: `${src?.name || 'Footage'} (subject)` },
-      // The original shows the whole picture again: its cut-out and matte masks go.
-      { type: 'setLayerMatte', layer: plan.footage, frames: [] },
-    ];
-    if (masks.length > 0) {
-      follow.push({ type: 'removePropertyGroups', groups: masks.map((x) => ({ layer: plan.footage, path: paths.maskGroup(x.id) })) });
-    }
-    // The copy sits right above the original; the layers go between the two.
-    const kids = childOrderOf(m, plan.parent);
-    const withCopy = kids.includes(subject) ? kids : (() => {
-      const at = kids.indexOf(plan.footage);
-      return [...kids.slice(0, at + 1), subject, ...kids.slice(at + 1)];
-    })();
-    const moving = new Set([subject, ...plan.behind]);
-    const rest = withCopy.filter((id) => !moving.has(id));
-    const at = rest.indexOf(plan.footage);
-    const next = [...rest.slice(0, at + 1), ...plan.behind, subject, ...rest.slice(at + 1)];
-    follow.push(...reorderCommands(plan.comp, plan.parent, withCopy, next, moving));
-    const res = await client.batch(label, follow);
-    if (!res.ok) {
-      reportEngineError(label, res.error);
-      return null;
-    }
-    ok = true;
-  } finally {
-    const closed = await client.endGesture(opened.value.gesture, ok);
-    if (!closed.ok) reportEngineError(label, closed.error);
-  }
-  return ok && subject ? { subject, hadMatte } : null;
+  const res = await edit(label, placeBehindCommands(plan));
+  return res.ok ? { subject: plan.footage, hadMatte } : null;
 }

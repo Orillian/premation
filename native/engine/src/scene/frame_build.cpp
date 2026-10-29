@@ -729,6 +729,17 @@ void Flattener::feed(const RLayer& l, double parentScale) {
       textures_.push_back(std::move(r));
     }
   }
+  // Behind Subject: a layer of the stack is hidden behind this one's subject — its matte frame, as a still.
+  if (l.subjectReferenced && l.subjectSrc && std::ranges::none_of(textures_, [&](const TextureRequest& t) { return t.key == object_matte_key(l.id); })) {
+    TextureRequest r;
+    r.key = object_matte_key(l.id);
+    r.layerId = l.id;
+    r.kind = TexKind::media;
+    r.src = *l.subjectSrc;
+    r.video = false;
+    r.compFps = fps_;
+    textures_.push_back(std::move(r));
+  }
   // Program X: the deep effects' mask rasters and float tables (effects_spatial_x.cpp),
   // whichever route the layer's stack takes.
   for (DeepFxTexture& d : deep_effect_textures(l)) {
@@ -897,6 +908,11 @@ api::Renderable Flattener::layer_to_renderable(const RLayer& l, const Mat3& pare
   // E4: a GPU-routed layer (not baked) runs its whole stack on the chain,
   // with the fill opacity, effect opacities and scoped masks the bake held.
   r.effects = l.gpuEffects ? extract_gpu_route_effects(l) : extract_spatial_effects(l, baked);
+  if (l.behindSubject) {
+    // Behind Subject: last on the chain, the layer is cut by the inverse of that layer's subject
+    // (Set Matte from its matte frame, drawn through its placement — composition_pass map_layer).
+    r.effects.push_back(FxWriter("set-matte").flag("useLuminance", false).flag("invert", true).text("matteLayerId", *l.behindSubject + std::string(kSubjectMapSuffix)).done());
+  }
   if (l.deformedMesh) r.deformed_mesh = deformed_mesh_wire(*l.deformedMesh, l.width, l.height, pad);
   // Shape / text bakes run on their raster, footage bakes on the decoded frame
   // (scene_textures.cpp footage_bake_ref → bake_chain.cpp bake_footage).

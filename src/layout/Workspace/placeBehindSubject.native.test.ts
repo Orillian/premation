@@ -1,7 +1,7 @@
 /**
- * Layer ▸ Arrange ▸ Place Behind Subject through the engine: the footage is
- * duplicated, the copy keeps the subject matte, the original loses it, and
- * the chosen layers land between them — one undo entry.
+ * Layer ▸ Arrange ▸ Place Behind Subject through the engine: the chosen
+ * layers move directly above the footage and are set Behind Subject — no
+ * duplicate, the footage keeps its subject — one undo entry.
  */
 
 import { engineIdle } from '@core/engine/engineInstance';
@@ -44,7 +44,7 @@ it('refuses a selection with nothing to put behind', () => {
   expect(planPlaceBehindSubject([s.V]).ok).toBe(false);
 });
 
-it('sandwiches the layers between the footage and a cut-out copy, moving the matte to the copy, as one entry', async () => {
+it('puts the layers directly above the footage, Behind its subject, as one entry — nothing duplicated', async () => {
   await h.run({
     type: 'addMask', layer: s.V, mode: 'add', inverted: false, name: ROTO_PATH_NAME,
     path: { vertices: [0, 0, 50, 0, 50, 50, 0, 50], inTangents: [], outTangents: [], closed: true, featherPoints: [], vertexStates: [] },
@@ -58,18 +58,21 @@ it('sandwiches the layers between the footage and a cut-out copy, moving the mat
   await engineIdle();
   expect(r).not.toBeNull();
   expect(r!.hadMatte).toBe(true);
+  expect(r!.subject).toBe(s.V);
   const after = order();
+  expect(after.length).toBe(before.length);
   const v = after.indexOf(s.V);
-  expect(after.slice(v, v + 4)).toEqual([s.V, s.T, s.B, r!.subject]);
-  expect(await masksOf(s.V)).not.toContain(ROTO_PATH_NAME);
-  expect(await masksOf(r!.subject)).toContain(ROTO_PATH_NAME);
-  expect(documentMirror().layer(r!.subject)?.name).toMatch(/\(subject\)$/);
+  expect(after.slice(v, v + 3)).toEqual([s.V, s.T, s.B]);
+  expect(await masksOf(s.V)).toContain(ROTO_PATH_NAME);
+  for (const id of [s.T, s.B]) {
+    const got = await h.query({ type: 'getPropertyValues', props: [{ layer: id, path: 'layer/behindSubject' }], time: 0, evaluated: false });
+    expect(got.values[0]?.value).toEqual({ kind: 'string', value: s.V });
+  }
   expect((await historyLabels()).length).toBe(entries + 1);
 
   await h.run({ type: 'undo' });
   await engineIdle();
   expect(order()).toEqual(before);
-  expect(await masksOf(s.V)).toContain(ROTO_PATH_NAME);
 });
 
 it('builds the sandwich with no matte yet, and says so', async () => {
@@ -80,5 +83,5 @@ it('builds the sandwich with no matte yet, and says so', async () => {
   expect(r?.hadMatte).toBe(false);
   const after = order();
   const v = after.indexOf(s.V);
-  expect(after.slice(v, v + 3)).toEqual([s.V, s.T, r!.subject]);
+  expect(after.slice(v, v + 2)).toEqual([s.V, s.T]);
 });

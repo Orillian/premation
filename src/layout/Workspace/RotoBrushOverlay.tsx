@@ -40,12 +40,11 @@ import { useActiveCompSize, useMirrorRevisionFrame } from '@hooks/useMirrorFrame
 import { useCurrentTime } from '@stores/playbackClockStore';
 import { useRotoBrushStore, type RotoStroke } from '@stores/rotoBrushStore';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
-import { segmentStrokesToMask, strokesAt } from '@core/workspace/rotoBrushTool';
+import { runSubjectEdit } from '@core/workspace/rotoBrushTool';
 import { secondsToFlicks } from '@motion/engine-api';
 import { MAIN_VIEWPORT, overlayLayer } from '@stores/overlayGeometry';
 import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
-import { applyRefineEdgeStroke, applySelectionBrushEdit } from './selectionBrush';
 import { useDisplayedCamera2D } from './useOverlayView';
 import styles from './RotoBrushOverlay.module.css';
 import { t } from '@core/i18n';
@@ -97,30 +96,49 @@ export function RotoBrushOverlay(): JSX.Element | null {
     [mapping],
   );
 
-  const segmentNow = useCallback(() => {
+  /**
+   * One stroke edits the subject's matte on this frame, then leaves the
+   * screen: Quick Selection grows it to the subject's edges (the model, from
+   * a few points along the stroke), Selection Brush paints exactly the
+   * brush's footprint, Refine Edge works out soft alpha (hair) in the band
+   * it covers. Alt-strokes subtract (Refine Edge has no subtract).
+   */
+  const applyStroke = useCallback((stroke: RotoStroke, radius: number) => {
     if (!nodeId) return;
     const store = useRotoBrushStore.getState();
-    // Re-segment from the WHOLE set, not the one stroke just painted — a
-    // background stroke only means anything relative to the foreground ones.
     store.setBusy(true);
-    store.setStatus(t('workspace.rotoBrush.segmenting', 'Segmenting…'));
-    // Only this frame's strokes segment it: a stroke on another frame is that
-    // frame's correction (it re-seeds propagation there).
-    void segmentStrokesToMask(nodeId, strokesAt(useRotoBrushStore.getState().strokes, time), time, {
-      featherPx: store.featherPx,
-      replacePathId: store.maskPathId,
+    store.setStatus(brushMode === 'refine'
+      ? t('workspace.refineEdge.working', 'Refining the edge…')
+      : t('workspace.rotoBrush.segmenting', 'Segmenting…'));
+    const tool = brushMode === 'snap' ? 'segment' : brushMode === 'exact' ? 'paint' : 'refine';
+    void runSubjectEdit(nodeId, time, {
+      tool,
+      op: stroke.kind === 'bg' ? 'subtract' : 'add',
+      strokes: [stroke.points],
+      radius,
     })
-      .then((pathId) => {
+      .then((r) => {
         const s = useRotoBrushStore.getState();
-        s.setMaskPathId(pathId);
-        s.setStatus(pathId ? null : t('workspace.rotoBrush.nothing', 'Nothing to segment there — paint over the subject.'));
+        s.setStatus(r && r.coverage > 0 ? null : t('workspace.rotoBrush.nothing', 'Nothing selected there — paint through the middle of the subject.'));
         getWorkspaceController().requestRender();
       })
       .catch((err: unknown) => {
         useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : t('workspace.rotoBrush.failed', 'Segmentation failed.'));
       })
-      .finally(() => useRotoBrushStore.getState().setBusy(false));
-  }, [nodeId, time]);
+      .finally(() => {
+        const s = useRotoBrushStore.getState();
+        s.removeStroke(stroke.id);
+        s.setBusy(false);
+      });
+  }, [nodeId, time, brushMode]);
+
+  /** The brush's screen radius, in layer px (the strokes' space). */
+  const radiusLocal = useCallback((): number => {
+    const size = useRotoBrushStore.getState().size;
+    const a = mapping?.screenToLocal(0, 0);
+    const b = mapping?.screenToLocal(size / 2, 0);
+    return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : size / 2;
+  }, [mapping]);
 
   /**
    * A CLICK (a press that never dragged) waits out the double-click interval
@@ -128,14 +146,14 @@ export function RotoBrushOverlay(): JSX.Element | null {
    * double-click, which — as in After Effects, where the Roto Brush works in
    * the Layer panel — opens the layer there instead, taking the click back.
    */
-  const pendingClickRef = useRef<{ timer: number; strokeId: string; x: number; y: number } | null>(null);
+  const pendingClickRef = useRef<{ timer: number; stroke: RotoStroke; radius: number; x: number; y: number } | null>(null);
   const flushPendingClick = useCallback((): void => {
     const pending = pendingClickRef.current;
     if (!pending) return;
     window.clearTimeout(pending.timer);
     pendingClickRef.current = null;
-    segmentNow();
-  }, [segmentNow]);
+    applyStroke(pending.stroke, pending.radius);
+  }, [applyStroke]);
   useEffect(() => () => {
     if (pendingClickRef.current) window.clearTimeout(pendingClickRef.current.timer);
     pendingClickRef.current = null;
@@ -147,36 +165,23 @@ export function RotoBrushOverlay(): JSX.Element | null {
     const store = useRotoBrushStore.getState();
     const done = store.end();
     if (!done || !nodeId) return;
-    if (brushMode !== 'snap') {
-      // The stroke is the edit itself, not a prompt for the model.
-      store.removeStroke(done.id);
-      // The brush's screen radius, in layer px (the strokes' space).
-      const a = mapping?.screenToLocal(0, 0);
-      const b = mapping?.screenToLocal(store.size / 2, 0);
-      const radius = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : store.size / 2;
-      if (brushMode === 'refine') {
-        void applyRefineEdgeStroke(nodeId, radius);
-        return;
-      }
-      void applySelectionBrushEdit(nodeId, done.points, radius, done.kind === 'bg', time).then((ok) => {
-        if (ok) getWorkspaceController().requestRender();
-      });
-      return;
-    }
+    const radius = radiusLocal();
     if (done.points.length < 2 && e) {
+      // A click waits out the double-click interval (a double-click opens the Layer panel).
       pendingClickRef.current = {
-        strokeId: done.id,
+        stroke: done,
+        radius,
         x: e.clientX,
         y: e.clientY,
         timer: window.setTimeout(() => {
           pendingClickRef.current = null;
-          segmentNow();
+          applyStroke(done, radius);
         }, DOUBLE_CLICK_MS),
       };
       return;
     }
-    segmentNow();
-  }, [nodeId, segmentNow, brushMode, mapping, time]);
+    applyStroke(done, radius);
+  }, [nodeId, applyStroke, radiusLocal]);
 
   /** A second press close to a pending click: open the layer, if it is under it. */
   const takeDoubleClick = (e: React.PointerEvent<HTMLDivElement>): boolean => {
@@ -200,10 +205,10 @@ export function RotoBrushOverlay(): JSX.Element | null {
     pendingClickRef.current = null;
     if (!openLayerOnDoubleClick(nodeId, { alt: e.altKey })) {
       // Nothing opened: the click was a click after all.
-      segmentNow();
+      applyStroke(pending.stroke, pending.radius);
       return false;
     }
-    useRotoBrushStore.getState().removeStroke(pending.strokeId);
+    useRotoBrushStore.getState().removeStroke(pending.stroke.id);
     return true;
   };
 

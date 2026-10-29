@@ -216,6 +216,14 @@ const StabilizeFraming_TO_NUM: Record<string, number> = { 'stabilizeOnly': 0, 's
 const StabilizeFraming_FROM_NUM: readonly (T.StabilizeFraming | undefined)[] = ['stabilizeOnly', 'stabilizeCrop', 'cropAutoScale'];
 function enc_StabilizeFraming(v: T.StabilizeFraming): number { const n = StabilizeFraming_TO_NUM[v]; if (n === undefined) throw new RangeError('StabilizeFraming: invalid value ' + String(v)); return n; }
 function dec_StabilizeFraming(n: number): T.StabilizeFraming { const v = StabilizeFraming_FROM_NUM[n]; if (v === undefined) throw new DecodeError('StabilizeFraming: unknown value ' + n, 'badEnum'); return v; }
+const SubjectTool_TO_NUM: Record<string, number> = { 'segment': 0, 'paint': 1, 'refine': 2 };
+const SubjectTool_FROM_NUM: readonly (T.SubjectTool | undefined)[] = ['segment', 'paint', 'refine'];
+function enc_SubjectTool(v: T.SubjectTool): number { const n = SubjectTool_TO_NUM[v]; if (n === undefined) throw new RangeError('SubjectTool: invalid value ' + String(v)); return n; }
+function dec_SubjectTool(n: number): T.SubjectTool { const v = SubjectTool_FROM_NUM[n]; if (v === undefined) throw new DecodeError('SubjectTool: unknown value ' + n, 'badEnum'); return v; }
+const SubjectOp_TO_NUM: Record<string, number> = { 'replace': 0, 'add': 1, 'subtract': 2 };
+const SubjectOp_FROM_NUM: readonly (T.SubjectOp | undefined)[] = ['replace', 'add', 'subtract'];
+function enc_SubjectOp(v: T.SubjectOp): number { const n = SubjectOp_TO_NUM[v]; if (n === undefined) throw new RangeError('SubjectOp: invalid value ' + String(v)); return n; }
+function dec_SubjectOp(n: number): T.SubjectOp { const v = SubjectOp_FROM_NUM[n]; if (v === undefined) throw new DecodeError('SubjectOp: unknown value ' + n, 'badEnum'); return v; }
 const FaceTrackMode_TO_NUM: Record<string, number> = { 'outline': 0, 'detailed': 1 };
 const FaceTrackMode_FROM_NUM: readonly (T.FaceTrackMode | undefined)[] = ['outline', 'detailed'];
 function enc_FaceTrackMode(v: T.FaceTrackMode): number { const n = FaceTrackMode_TO_NUM[v]; if (n === undefined) throw new RangeError('FaceTrackMode: invalid value ' + String(v)); return n; }
@@ -8576,6 +8584,7 @@ function encS_ObjectMatteJob(w: Writer, v: T.ObjectMatteJob): void {
   if (v.refine !== undefined) { w.varint(5714); { const s = w.beginLd(); encS_MatteRefine(w, v.refine); w.endLd(s); } }
   if (v.outputFolder !== undefined) { w.varint(5722); w.str(v.outputFolder); }
   if (v.origin !== undefined) { w.varint(5728); w.i64(v.origin); }
+  if (v.edit !== undefined) { w.varint(5738); { const s = w.beginLd(); encS_SubjectEdit(w, v.edit); w.endLd(s); } }
 }
 function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   const l_prompts: T.Vec2[] = [];
@@ -8599,6 +8608,7 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   let v_refine: T.MatteRefine | undefined;
   let v_outputFolder: string | undefined;
   let v_origin: number | undefined;
+  let v_edit: T.SubjectEdit | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -8619,6 +8629,7 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
       case 5714: v_refine = decS_MatteRefine(r, r.ldEnd(), {}); break;
       case 5722: v_outputFolder = r.str(); break;
       case 5728: v_origin = r.i64(); break;
+      case 5738: v_edit = decS_SubjectEdit(r, r.ldEnd(), {}); break;
       default: r.skip(key);
     }
   }
@@ -8644,6 +8655,43 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   if (v_refine !== undefined) o.refine = v_refine;
   if (v_outputFolder !== undefined) o.outputFolder = v_outputFolder;
   if (v_origin !== undefined) o.origin = v_origin;
+  if (v_edit !== undefined) o.edit = v_edit;
+  return o;
+}
+function encS_SubjectEdit(w: Writer, v: T.SubjectEdit): void {
+  w.byte(8); w.varint(enc_SubjectTool(v.tool));
+  w.byte(16); w.varint(enc_SubjectOp(v.op));
+  w.byte(25); w.f64(v.radius);
+  w.byte(32); w.bool(v.cut);
+}
+function decS_SubjectEdit(r: Reader, end: number, o: any): T.SubjectEdit {
+  let h_tool = false;
+  let h_op = false;
+  let h_radius = false;
+  let h_cut = false;
+  let v_tool: T.SubjectTool | undefined;
+  let v_op: T.SubjectOp | undefined;
+  let v_radius: number | undefined;
+  let v_cut: boolean | undefined;
+  while (r.pos < end) {
+    const key = r.varint();
+    switch (key) {
+      case 8: v_tool = dec_SubjectTool(r.varint()); h_tool = true; break;
+      case 16: v_op = dec_SubjectOp(r.varint()); h_op = true; break;
+      case 25: v_radius = r.f64(); h_radius = true; break;
+      case 32: v_cut = r.bool(); h_cut = true; break;
+      default: r.skip(key);
+    }
+  }
+  r.expectAt(end);
+  if (!h_tool) throw new DecodeError('SubjectEdit.tool: missing', 'missingField');
+  if (!h_op) throw new DecodeError('SubjectEdit.op: missing', 'missingField');
+  if (!h_radius) throw new DecodeError('SubjectEdit.radius: missing', 'missingField');
+  if (!h_cut) throw new DecodeError('SubjectEdit.cut: missing', 'missingField');
+  o.tool = v_tool;
+  o.op = v_op;
+  o.radius = v_radius;
+  o.cut = v_cut;
   return o;
 }
 function encS_ObjectMatteStroke(w: Writer, v: T.ObjectMatteStroke): void {
@@ -9531,23 +9579,33 @@ function decS_GetCameraSolve(r: Reader, end: number, o: any): T.GetCameraSolve {
 function encS_SetLayerMatte(w: Writer, v: T.SetLayerMatte): void {
   w.byte(10); w.str(v.layer);
   { const a = v.frames; for (let i = 0; i < a.length; i++) { w.byte(18); { const s = w.beginLd(); encS_ContentAwareFillFrame(w, a[i]!); w.endLd(s); } } }
+  w.byte(24); w.bool(v.merge);
+  if (v.cut !== undefined) { w.byte(32); w.bool(v.cut); }
 }
 function decS_SetLayerMatte(r: Reader, end: number, o: any): T.SetLayerMatte {
   const l_frames: T.ContentAwareFillFrame[] = [];
   let h_layer = false;
+  let h_merge = false;
   let v_layer: string | undefined;
+  let v_merge: boolean | undefined;
+  let v_cut: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
       case 10: v_layer = r.str(); h_layer = true; break;
       case 18: l_frames.push(decS_ContentAwareFillFrame(r, r.ldEnd(), {})); break;
+      case 24: v_merge = r.bool(); h_merge = true; break;
+      case 32: v_cut = r.bool(); break;
       default: r.skip(key);
     }
   }
   r.expectAt(end);
   if (!h_layer) throw new DecodeError('SetLayerMatte.layer: missing', 'missingField');
+  if (!h_merge) throw new DecodeError('SetLayerMatte.merge: missing', 'missingField');
   o.layer = v_layer;
   o.frames = l_frames;
+  o.merge = v_merge;
+  if (v_cut !== undefined) o.cut = v_cut;
   return o;
 }
 function encS_RotoBrushJob(w: Writer, v: T.RotoBrushJob): void {
@@ -20370,6 +20428,7 @@ export const codecs = {
   AutoTraceJob: mk<T.AutoTraceJob>(encS_AutoTraceJob, (r, e) => decS_AutoTraceJob(r, e, {})),
   SceneDetectJob: mk<T.SceneDetectJob>(encS_SceneDetectJob, (r, e) => decS_SceneDetectJob(r, e, {})),
   ObjectMatteJob: mk<T.ObjectMatteJob>(encS_ObjectMatteJob, (r, e) => decS_ObjectMatteJob(r, e, {})),
+  SubjectEdit: mk<T.SubjectEdit>(encS_SubjectEdit, (r, e) => decS_SubjectEdit(r, e, {})),
   ObjectMatteStroke: mk<T.ObjectMatteStroke>(encS_ObjectMatteStroke, (r, e) => decS_ObjectMatteStroke(r, e, {})),
   MatteRefine: mk<T.MatteRefine>(encS_MatteRefine, (r, e) => decS_MatteRefine(r, e, {})),
   FaceTrackJob: mk<T.FaceTrackJob>(encS_FaceTrackJob, (r, e) => decS_FaceTrackJob(r, e, {})),

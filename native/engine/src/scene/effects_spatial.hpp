@@ -47,8 +47,13 @@ struct DeepFxTexture {
 /// no Matte Layer. The matte frame is then a texture of that effect
 /// (`RLayer::objectMatteSrc`), and the layer is not cut out by it.
 [[nodiscard]] bool reads_own_object_matte(const RLayer& l);
+/// An effect's Apply to (Compositing Options, `subjectScope`): 0 the whole layer, 1 inside its subject, 2 outside it (effects_port.cpp).
+[[nodiscard]] int subject_scope_of(const Json& e);
 /// The texture key the layer's Object Matte frame is fed under.
 [[nodiscard]] std::string object_matte_key(std::string_view layerId);
+/// A map layer id `<layer>#subject`: that layer's subject matte frame (object_matte_key) drawn
+/// through its placement, not its rendered pixels (Behind Subject's Set Matte, map_layer).
+inline constexpr std::string_view kSubjectMapSuffix = "#subject";
 /// The textures the layer's deep effects read this frame (frame_build.cpp).
 [[nodiscard]] std::vector<DeepFxTexture> deep_effect_textures(const RLayer& l);
 /// Program X: a deep effect whose pixels move with the layer clock (`time`).

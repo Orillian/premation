@@ -1830,11 +1830,11 @@ const placeBehindSubjectTool: AiTool['handler'] = async (input, ctx) => {
   const r = await placeBehindSubject(i.nodeIds, i.point ? { point: i.point } : {});
   if (!r.ok) return fail(r.message);
   const how = r.matte === 'kept'
-    ? 'it already had a subject matte, now on the copy'
+    ? 'it already had a subject matte'
     : r.matte === 'made'
-      ? `the subject was cut out over ${r.frames ?? 0} frames`
-      : 'no matte yet: the user is asked to click the subject with the Object Matte tool (or call again with `point`)';
-  return ok(`Placed ${i.nodeIds.join(', ')} behind the subject. '${r.subject}' is the cut-out copy on top; ${how}.`, { subject: r.subject, matte: r.matte });
+      ? `the subject was selected over ${r.frames ?? 0} frames`
+      : 'no subject yet: the user is asked to click the subject with the Object Matte tool (or call again with `point`)';
+  return ok(`Placed ${i.nodeIds.join(', ')} behind the subject of footage '${r.subject}'; ${how}.`, { subject: r.subject, matte: r.matte });
 };
 
 const exportVideoTool: AiTool['handler'] = async (input, ctx) => {

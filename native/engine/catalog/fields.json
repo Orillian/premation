@@ -1310,6 +1310,24 @@
       }
     },
     {
+      "path": "layer/behindSubject",
+      "key": "behindSubject",
+      "label": "Behind Subject",
+      "type": "string",
+      "default": "",
+      "clearAtDefault": true,
+      "store": {
+        "fx": "behindSubject"
+      },
+      "when": {
+        "notKinds": [
+          "camera",
+          "light",
+          "audio"
+        ]
+      }
+    },
+    {
       "path": "layer/sequenceLoop",
       "key": "loop",
       "label": "Loop Sequence",
@@ -2468,6 +2486,13 @@
       "path": "compositing/label",
       "key": "labelColor",
       "label": "Label",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "path": "compositing/subject",
+      "key": "subjectScope",
+      "label": "Apply To",
       "type": "string",
       "default": ""
     }

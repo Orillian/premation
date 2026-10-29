@@ -12,7 +12,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@components/Modal';
 import { Button } from '@components/Button';
 import { engine } from '@core/engine/engineInstance';
-import { edit } from '@core/engine/uiEdits';
 import { values } from '@core/engine/propRefs';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
 import { playheadSeconds } from '@core/timeline/timelineView';
@@ -46,7 +45,6 @@ export function TextBehindDialog(): JSX.Element | null {
   const selection = useSelectionStore((s) => s.ids);
   const [subject, setSubject] = useState<string>('');
   const [entrance, setEntrance] = useState<string>('Rise Up');
-  const [softEdge, setSoftEdge] = useState(true);
   // A subject selected on one frame does not move with the footage: follow it first (AE: propagate, then stack).
   const [followFirst, setFollowFirst] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -89,13 +87,6 @@ export function TextBehindDialog(): JSX.Element | null {
       }
       const out = await runPlaceBehindSubject([subject, ...behind]);
       if (!out.ok) return;
-      if (softEdge) {
-        // A soft edge where they overlap: the cut-out copy's matte masks feathered.
-        const masks = mirrorMaskHeaders(documentMirror().tree(out.subject)).filter((x) => x.name === ROTO_PATH_NAME);
-        if (masks.length > 0) {
-          await edit(t('workspace.textBehind.softEdge', 'Soft Edge'), masks.map((x) => ({ type: 'setProperty' as const, prop: { layer: out.subject, path: `masks/${x.id}/feather` }, value: values.scalar(4) })));
-        }
-      }
       if (entrance !== 'none') await applyAnimationPresetEdit(behind, entrance, playheadSeconds());
       useSelectionStore.getState().set(behind);
       close();
@@ -142,10 +133,6 @@ export function TextBehindDialog(): JSX.Element | null {
           {t('workspace.textBehind.followFirst', 'Follow the subject through the shot first (it is selected on one frame)')}
         </label>
       )}
-      <label className={styles.check}>
-        <input type="checkbox" checked={softEdge} onChange={(e) => setSoftEdge(e.target.checked)} />
-        {t('workspace.textBehind.softEdgeLabel', 'Soft edge where they overlap')}
-      </label>
     </Modal>
   );
 }

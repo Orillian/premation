@@ -28,7 +28,7 @@ import { documentMirror } from '@stores/documentMirror';
 import { isPaintableLayer } from '@core/mirror/layerKinds';
 import { commitPaintDrag } from '@core/engine/paintEdits';
 import { ctrlDragBrush, penSample } from '@core/paint/paintCapture';
-import { isRotoFrozen, segmentStrokesToMask } from '@core/workspace/rotoBrushTool';
+import { runSubjectEdit, isRotoFrozen } from '@core/workspace/rotoBrushTool';
 import { drawToolOptions } from '@motion/workspace';
 import { useUIStore } from '@stores/uiStore';
 import { usePaintStore } from '@stores/paintStore';
@@ -126,21 +126,26 @@ export function LayerPaintSurface({
     if (!done) return;
     store.setBusy(true);
     store.setStatus(t('layerViewer.paint.segmenting', 'Segmenting…'));
-    void segmentStrokesToMask(nodeId, useRotoBrushStore.getState().strokes, compTime, {
-      featherPx: store.featherPx,
-      replacePathId: store.maskPathId,
+    // Quick Selection: the stroke edits the subject's matte (Alt-strokes subtract), then leaves the screen.
+    void runSubjectEdit(nodeId, compTime, {
+      tool: 'segment',
+      op: done.kind === 'bg' ? 'subtract' : 'add',
+      strokes: [done.points],
+      radius: store.size / 2 / Math.max(1e-6, view.scale),
     })
-      .then((pathId) => {
-        const s = useRotoBrushStore.getState();
-        s.setMaskPathId(pathId);
-        s.setStatus(pathId ? null : t('layerViewer.paint.nothingToSegment', 'Nothing to segment there — paint over the subject.'));
+      .then((r) => {
+        useRotoBrushStore.getState().setStatus(r && r.coverage > 0 ? null : t('layerViewer.paint.nothingToSegment', 'Nothing to segment there — paint over the subject.'));
         bumpScene();
       })
       .catch((err: unknown) => {
         useRotoBrushStore.getState().setStatus(err instanceof Error ? err.message : t('layerViewer.paint.segmentationFailed', 'Segmentation failed.'));
       })
-      .finally(() => useRotoBrushStore.getState().setBusy(false));
-  }, [nodeId, compTime]);
+      .finally(() => {
+        const s = useRotoBrushStore.getState();
+        s.removeStroke(done.id);
+        s.setBusy(false);
+      });
+  }, [nodeId, compTime, view.scale]);
 
   if (!painting && !roto) return null;
 

@@ -604,6 +604,22 @@ enum class StabilizeFraming : std::uint32_t {
 [[nodiscard]] std::string_view to_string(StabilizeFraming v) noexcept;
 [[nodiscard]] bool from_u32(std::uint32_t n, StabilizeFraming& out) noexcept;
 
+enum class SubjectTool : std::uint32_t {
+  segment = 0,
+  paint = 1,
+  refine = 2,
+};
+[[nodiscard]] std::string_view to_string(SubjectTool v) noexcept;
+[[nodiscard]] bool from_u32(std::uint32_t n, SubjectTool& out) noexcept;
+
+enum class SubjectOp : std::uint32_t {
+  replace = 0,
+  add = 1,
+  subtract = 2,
+};
+[[nodiscard]] std::string_view to_string(SubjectOp v) noexcept;
+[[nodiscard]] bool from_u32(std::uint32_t n, SubjectOp& out) noexcept;
+
 enum class FaceTrackMode : std::uint32_t {
   outline = 0,
   detailed = 1,
@@ -1189,6 +1205,7 @@ struct AutoTraceJob;
 struct SceneDetectJob;
 struct ObjectMatteStroke;
 struct MatteRefine;
+struct SubjectEdit;
 struct ObjectMatteJob;
 struct TranscribeJob;
 struct AudioAnalysisJob;
@@ -3232,6 +3249,8 @@ struct ContentAwareFillFrame {
 struct SetLayerMatte {
   LayerId layer;
   std::vector<ContentAwareFillFrame> frames;
+  bool merge = false;
+  std::optional<bool> cut;
   bool operator==(const SetLayerMatte&) const = default;
 };
 
@@ -3316,6 +3335,14 @@ struct MatteRefine {
   bool operator==(const MatteRefine&) const = default;
 };
 
+struct SubjectEdit {
+  SubjectTool tool = SubjectTool::segment;
+  SubjectOp op = SubjectOp::replace;
+  double radius = 0.0;
+  bool cut = false;
+  bool operator==(const SubjectEdit&) const = default;
+};
+
 struct ObjectMatteJob {
   LayerId layer;
   TimeRange range;
@@ -3334,6 +3361,7 @@ struct ObjectMatteJob {
   std::optional<MatteRefine> refine;
   std::optional<std::string> output_folder;
   std::optional<Time> origin;
+  std::optional<SubjectEdit> edit;
   bool operator==(const ObjectMatteJob&) const = default;
 };
 
@@ -7182,6 +7210,8 @@ void encode(wire::Writer& w, const ObjectMatteStroke& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, ObjectMatteStroke& out);
 void encode(wire::Writer& w, const MatteRefine& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, MatteRefine& out);
+void encode(wire::Writer& w, const SubjectEdit& v);
+[[nodiscard]] wire::Status decode(wire::Reader& r, SubjectEdit& out);
 void encode(wire::Writer& w, const ObjectMatteJob& v);
 [[nodiscard]] wire::Status decode(wire::Reader& r, ObjectMatteJob& out);
 void encode(wire::Writer& w, const TranscribeJob& v);

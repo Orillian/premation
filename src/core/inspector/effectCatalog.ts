@@ -66,6 +66,8 @@ export interface Effect {
   labelColor?: string;
   /** Scope this effect to one of the layer's mask paths. */
   maskId?: string;
+  /** Compositing Options › Apply To: inside the layer's subject (its Object Matte selection) or outside it; absent = the whole layer. */
+  subjectScope?: 'subject' | 'background';
   /** @deprecated The pre-multi-param single scalar; still read, never written. */
   amount?: number;
 }

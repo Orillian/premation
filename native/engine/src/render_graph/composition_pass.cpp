@@ -1101,6 +1101,37 @@ class CompositionPass final : public RenderPass, public MapLayerSource {
   /// displacementMapTexture: render a referenced layer into MATTE_TARGET.
   TexRef map_layer(PassContext& ctx, const ById& byId, std::string_view mapLayerId, std::string_view selfId) override {
     if (mapLayerId.empty() || mapLayerId == selfId) return {};
+    // `<layer>#subject` (Behind Subject, effects_spatial.hpp kSubjectMapSuffix): that layer's subject
+    // matte frame ("fxmatte:<layer>", requested by frame_build) drawn through its placement alone —
+    // no effects, masks, matte or opacity: the subject's coverage where the layer sits.
+    constexpr std::string_view kSubject = "#subject";
+    if (mapLayerId.size() > kSubject.size() && mapLayerId.ends_with(kSubject)) {
+      const std::string_view base = mapLayerId.substr(0, mapLayerId.size() - kSubject.size());
+      const auto sit = byId.find(base);
+      if (sit == byId.end() || base == selfId) return {};
+      api::Renderable subject = *sit->second;
+      subject.texture_key = "fxmatte:" + std::string(base);
+      subject.kind = api::RenderableKind::image;  // a still, whatever the footage was
+      subject.effects.clear();
+      subject.mask_id.reset();
+      subject.mask_texture_key.reset();
+      subject.lut_texture_key.reset();
+      subject.color_matrix.reset();
+      subject.matte.reset();
+      subject.adjustment.reset();
+      subject.motion_samples.clear();
+      subject.opacity = 1;
+      subject.blend = api::RenderBlendMode::normal;
+      subject.matte_source = false;
+      subject.precomp.reset();
+      subject.precomp_children.clear();
+      if (!ctx.texture(*subject.texture_key)) return {};
+      Commands cmds;
+      renderable_cmds(ctx, subject, 1, cmds);
+      if (cmds.empty()) return {};
+      ctx.draw_into(kMatteTarget, cmds, true);
+      return ctx.target(kMatteTarget)->tex();
+    }
     const auto it = byId.find(mapLayerId);
     if (it == byId.end()) return {};
     const api::Renderable* src = it->second;

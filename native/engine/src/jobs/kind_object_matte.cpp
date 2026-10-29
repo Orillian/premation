@@ -75,7 +75,13 @@
 #include "sam_pipeline.hpp"
 #include "sam2_track.hpp"
 #include "sam_embed_cache.hpp"
+#include "fxstate.hpp"
+#include "subject_edit.hpp"
+#include "timeline.hpp"
 #include "values.hpp"
+#if defined(PREMATION_JOBS_HAVE_SCENE)
+#include "scene/image_decode.hpp"
+#endif
 
 namespace premation::jobs {
 
@@ -179,6 +185,105 @@ class ObjectMatteResult final : public JobResult {
   mutable std::string mask_;
 };
 
+/// A subject edit (the spec's `edit`): the frame's matte stored and merged into the layer's
+/// (setLayerMatte, merge), its outline kept as the "Object Matte" mask (mode none: the cut is
+/// the matte's) — a key at the frame when that mask is animated, else its shape.
+class SubjectEditResult final : public JobResult {
+ public:
+  SubjectEditResult(std::string layer, double compTime, std::string file, api::BezierPath outline, double coverage, bool cut,
+                    std::vector<std::string> replace, std::string provider, std::optional<Json> timings)
+      : layer_(std::move(layer)),
+        compTime_(compTime),
+        file_(std::move(file)),
+        outline_(std::move(outline)),
+        coverage_(coverage),
+        cut_(cut),
+        replace_(std::move(replace)),
+        provider_(std::move(provider)),
+        timings_(std::move(timings)) {}
+
+  [[nodiscard]] std::string summary_json() const override {
+    Json s = Json::object();
+    s.set("file", Json::string(file_));
+    s.set("coverage", Json::number(coverage_));
+    if (!provider_.empty()) s.set("provider", Json::string(provider_));
+    if (timings_) s.set("timings", *timings_);
+    if (!mask_.empty()) s.set("mask", Json::string(mask_));
+    Json outline = Json::array();
+    for (const double v : outline_.vertices) outline.arr_mut().push_back(Json::number(v));
+    s.set("outline", std::move(outline));
+    return js::stringify(s);
+  }
+  [[nodiscard]] std::string label() const override { return "Subject"; }
+  [[nodiscard]] bool has_edits() const override { return true; }
+
+  void apply(JobApply& a) const override {
+    if (!replace_.empty()) {
+      api::RemovePropertyGroups drop;
+      for (const std::string& id : replace_) drop.groups.push_back(api::PropRef{layer_, "masks/" + id});
+      (void)a.run(command(std::move(drop)));
+    }
+    api::SetLayerMatte m;
+    m.layer = layer_;
+    m.merge = true;
+    m.cut = cut_;
+    api::ContentAwareFillFrame fr;
+    fr.time = flicks_of(compTime_);
+    fr.src = file_;
+    m.frames.push_back(std::move(fr));
+    (void)a.run(command(std::move(m)));
+    if (outline_.vertices.size() < 6) return;  // nothing selected now: the outline keeps its last shape
+    const doc::Node* node = a.document().node(layer_);
+    std::string group;
+    if (node != nullptr) {
+      const Json mask = doc::get_node_mask(*node);
+      if (mask.at("paths").is_array())
+        for (const Json& p : mask.at("paths").arr())
+          if (p.at("id").is_string() && p.at("name").is_string() && p.at("name").str() == "Object Matte") group = "masks/" + p.at("id").str();
+    }
+    if (group.empty()) {
+      api::AddMask add;
+      add.layer = layer_;
+      add.path = outline_;
+      add.mode = api::MaskMode::none;
+      add.name = "Object Matte";
+      group = mask_group_of(a.run(command(std::move(add))));
+      // After Effects draws a selected subject's boundary in magenta.
+      api::SetProperty colour;
+      colour.prop = api::PropRef{layer_, group + "/color"};
+      colour.value = doc::v_color(1.0, 0.25, 0.85, 1.0);
+      (void)a.run(command(std::move(colour)));
+    } else if (!doc::read_node_mask_anim(*node).empty()) {
+      api::AddKeyframes keys;
+      api::KeyframeInsert k;
+      k.prop = api::PropRef{layer_, group + "/path"};
+      k.time = flicks_of(compTime_);
+      k.value = doc::v_path(outline_);
+      keys.keys.push_back(std::move(k));
+      (void)a.run(command(std::move(keys)));
+    } else {
+      api::SetProperty set;
+      set.prop = api::PropRef{layer_, group + "/path"};
+      set.value = doc::v_path(outline_);
+      (void)a.run(command(std::move(set)));
+    }
+    const std::size_t slash = group.find('/');
+    mask_ = slash == std::string::npos ? group : group.substr(slash + 1);
+  }
+
+ private:
+  std::string layer_;
+  double compTime_;
+  std::string file_;
+  api::BezierPath outline_;
+  double coverage_;
+  bool cut_;
+  std::vector<std::string> replace_;
+  std::string provider_;
+  std::optional<Json> timings_;
+  mutable std::string mask_;
+};
+
 /// The model file: the spec's, else `<dir>/<file>` (the user's or the bundled folder); '' when neither.
 std::string model_path(const std::string& given, const std::optional<std::string>& dir, const char* file) {
   if (!given.empty()) return given;
@@ -277,6 +382,115 @@ struct Timings {
   double trace = 0;
 };
 
+/// The frame's stored matte (the cut-out PNG's alpha) at w×h; empty when there is none or it cannot be read.
+std::vector<float> stored_matte(const std::string& file, int w, int h) {
+  if (file.empty()) return {};
+#if defined(PREMATION_JOBS_HAVE_SCENE)
+  scene::DecodedImage d;
+  std::string error;
+  if (!scene::decode_image_file(std::filesystem::path(std::u8string(file.begin(), file.end())), d, error) || d.width == 0 || d.height == 0) return {};
+  std::vector<float> a(static_cast<std::size_t>(d.width) * d.height);
+  for (std::size_t i = 0; i < a.size(); ++i) a[i] = d.rgba[i * 4 + 3] / 255.0f;
+  if (static_cast<int>(d.width) == w && static_cast<int>(d.height) == h) return a;
+  return subject::resample(a, static_cast<int>(d.width), static_cast<int>(d.height), w, h);
+#else
+  (void)w;
+  (void)h;
+  return {};
+#endif
+}
+
+/// A subject edit's tail: the frame's matte edited (segment / paint / refine × replace / add /
+/// subtract), stored as the cut-out PNG (a new file each time: undo still names the old one),
+/// and its outline. `delta` is the segmentation (the segment tool), else unused.
+std::string subject_edit_finish(const Json& in, const Json& edit, const RgbaImage& img, const std::vector<std::vector<subject::Pt>>& strokes,
+                                std::vector<float> delta, double kx, double ky, double layerW, double layerH, const std::string& provider,
+                                const Timings& timings, Clock::time_point t0) {
+  const auto tEdit = Clock::now();
+  const int w = static_cast<int>(img.width);
+  const int h = static_cast<int>(img.height);
+  const std::size_t n = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+  std::vector<float> base = stored_matte(edit.at("base").is_string() ? edit.at("base").str() : std::string(), w, h);
+  if (base.size() != n) base.assign(n, 0.0f);
+  const std::string tool = edit.at("tool").is_string() ? edit.at("tool").str() : "segment";
+  const std::string opName = edit.at("op").is_string() ? edit.at("op").str() : "replace";
+  const subject::Op op = opName == "add" ? subject::Op::add : opName == "subtract" ? subject::Op::subtract : subject::Op::replace;
+  const double radius = std::max(0.5, num_or(edit, "radius", 10) * (kx + ky) / 2);
+  std::vector<float> alpha;
+  if (tool == "refine") {
+    if (strokes.empty()) fail(ErrorCode::invalid_argument, "Refine Edge: paint along the edge.");
+    alpha = subject::refine_band(img.rgba, w, h, base, subject::paint(w, h, strokes, radius), radius);
+  } else {
+    if (tool == "paint") {
+      if (strokes.empty()) fail(ErrorCode::invalid_argument, "Selection Brush: paint over the subject.");
+      delta = subject::paint(w, h, strokes, radius);
+    }
+    if (delta.size() != n) fail(ErrorCode::internal, "subject edit: bad matte size");
+    alpha = subject::combine(base, delta, op);
+  }
+  const double editMs = ms_since(tEdit);
+
+  const std::string folder = edit.at("folder").is_string() ? edit.at("folder").str() : std::string();
+  if (folder.empty()) fail(ErrorCode::invalid_argument, "subject edit: no folder");
+  const std::filesystem::path dir(std::u8string(folder.begin(), folder.end()));
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  const auto tPng = Clock::now();
+  std::vector<std::uint8_t> png;
+  if (!exporter::encode_png_rgba8(matte::cutout(img.rgba, alpha, w, h), img.width, img.height, png, 1)) fail(ErrorCode::io, "could not encode the matte");
+  std::string frameName = std::to_string(static_cast<long long>(std::llround(num_or(edit, "compTime", 0) * num_or(edit, "compFps", 30))));
+  if (frameName.size() < 6) frameName.insert(0, 6 - frameName.size(), '0');
+  const auto stamp = static_cast<unsigned long long>(std::chrono::system_clock::now().time_since_epoch().count());
+  const std::filesystem::path path = dir / ("subject_" + frameName + "_" + std::to_string(stamp) + ".png");
+  {
+    std::filesystem::path tmp = path;
+    tmp += ".tmp";
+    {
+      std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+      f.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+      if (!f) fail(ErrorCode::io, "cannot write the matte next to the project");
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) fail(ErrorCode::io, "cannot write the matte: " + ec.message());
+  }
+  const double pngMs = ms_since(tPng);
+
+  std::vector<std::uint8_t> bin(n);
+  std::size_t on = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    bin[i] = alpha[i] >= 0.5f ? 255 : 0;
+    on += bin[i] != 0 ? 1 : 0;
+  }
+  const std::vector<trace::TracePoint> contour = on > 0 ? sam::matte_contour(bin, img.width, img.height, 128) : std::vector<trace::TracePoint>{};
+  Json o = Json::object();
+  o.set("width", Json::number(img.width));
+  o.set("height", Json::number(img.height));
+  o.set("layerWidth", Json::number(layerW));
+  o.set("layerHeight", Json::number(layerH));
+  if (!provider.empty()) o.set("provider", Json::string(provider));
+  const std::u8string u = path.u8string();
+  o.set("file", Json::string(std::string(u.begin(), u.end())));
+  o.set("coverage", Json::number(static_cast<double>(on) / static_cast<double>(std::max<std::size_t>(1, n))));
+  Json pts = Json::array();
+  for (const trace::TracePoint& p : contour) {
+    pts.arr_mut().push_back(Json::number(p.x));
+    pts.arr_mut().push_back(Json::number(p.y));
+  }
+  o.set("contour", std::move(pts));
+  Json tj = Json::object();
+  tj.set("open", Json::number(timings.open));
+  tj.set("read", Json::number(timings.read));
+  tj.set("load", Json::number(timings.load));
+  tj.set("encode", Json::number(timings.encode));
+  tj.set("decode", Json::number(timings.decode));
+  tj.set("edit", Json::number(editMs));
+  tj.set("png", Json::number(pngMs));
+  tj.set("total", Json::number(ms_since(t0)));
+  o.set("timings", std::move(tj));
+  (void)in;
+  return js::stringify(o);
+}
+
 /// The child: frame → SAM → contour JSON.
 std::string object_matte_child(const std::string& inputJson, JobControl& control) {
   const auto t0 = Clock::now();
@@ -321,12 +535,15 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   std::optional<sam::CachedEmbedding> cached;
   const Resident::Emb* hot = cacheKey.empty() ? nullptr : res.find(cacheKey);
   if (hot == nullptr && !cacheDir.empty() && !cacheKey.empty()) cached = sam::read_embedding(cacheDir, cacheKey);
+  // A subject edit (the spec's `edit`) needs the picture itself: the edge snap, the band's colours, the stored cut-out.
+  const Json& editIn = in->at("edit");
+  const bool editing = editIn.is_object();
   RgbaImage img;
   const auto tRead = Clock::now();
-  if (hot != nullptr) {
+  if (hot != nullptr && !editing) {
     img.width = hot->width;
     img.height = hot->height;
-  } else if (cached) {
+  } else if (cached && !editing) {
     img.width = cached->width;
     img.height = cached->height;
   } else {
@@ -351,6 +568,28 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   if (in->at("box").is_array() && in->at("box").arr().size() == 4) {
     const Json::Array& b = in->at("box").arr();
     box = sam::Box{b[0].num() * kx, b[1].num() * ky, b[2].num() * kx, b[3].num() * ky};
+  }
+  // The edit's brush strokes, in frame px.
+  std::vector<std::vector<subject::Pt>> strokes;
+  if (editing && editIn.at("strokes").is_array()) {
+    for (const Json& st : editIn.at("strokes").arr()) {
+      std::vector<subject::Pt> s;
+      if (st.is_array())
+        for (const Json& p : st.arr())
+          if (p.is_array() && p.arr().size() >= 2) s.push_back({p.arr()[0].num() * kx, p.arr()[1].num() * ky});
+      if (!s.empty()) strokes.push_back(std::move(s));
+    }
+  }
+  const std::string tool = editing && editIn.at("tool").is_string() ? editIn.at("tool").str() : "segment";
+  if (editing && tool != "segment") return subject_edit_finish(*in, editIn, img, strokes, {}, kx, ky, layerW, layerH, "", timings, t0);
+  if (editing) {
+    // Quick Selection: each stroke as the few prompts SAM was trained on (≤ 5 a stroke, 10 in all).
+    std::size_t budget = 10;
+    for (const std::vector<subject::Pt>& s : strokes) {
+      for (const subject::Pt& p : subject::sample_stroke(s, std::min<std::size_t>(5, budget))) points.push_back({p.x, p.y, 1});
+      budget = points.size() >= 10 ? 0 : 10 - points.size();
+      if (budget == 0) break;
+    }
   }
   const sam::Letterbox lb = sam::letterbox(img.width, img.height);
   const std::optional<sam::Prompts> prompts = sam::prompts_for(points, box, lb.scale);
@@ -403,6 +642,44 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   sam::Decoded out;
   if (!models.decode(*emb, *prompts, out, error)) fail(ErrorCode::internal, "SAM decoder: " + error);
   timings.decode = ms_since(tDec);
+  // Which of the three candidates the prompts mean (a lone click: the whole object under it).
+  subject::Intent intent;
+  intent.loneClick = !box && strokes.empty() && points.size() == 1;
+  intent.subtract = editing && editIn.at("op").is_string() && editIn.at("op").str() == "subtract";
+  const std::size_t pick = subject::choose_candidate(out.iouScores.data, out.predMasks.data, points, lb.scale, intent, img.width, img.height);
+  // What the choice saw, reported with the timings (Object Matte's "why this one").
+  Json cands = Json::array();
+  for (const subject::CandidateScore& q : subject::score_candidates(out.iouScores.data, out.predMasks.data, points, lb.scale, img.width, img.height)) {
+    Json cj = Json::object();
+    cj.set("iou", Json::number(q.iou));
+    cj.set("cover", Json::number(q.fgCover));
+    cj.set("area", Json::number(q.area));
+    cj.set("border", Json::number(q.border));
+    cands.arr_mut().push_back(std::move(cj));
+  }
+  if (editing) {
+    const std::size_t plane = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
+    if (out.predMasks.data.size() < (pick + 1) * plane) fail(ErrorCode::internal, "SAM decoder: unexpected output shapes");
+    std::vector<float> soft = matte::soft_mask(out.predMasks.data, pick * plane, img.width, img.height, lb.scale);
+    const int w = static_cast<int>(img.width);
+    const int h = static_cast<int>(img.height);
+    if (box) {
+      std::vector<std::uint8_t> keepBox(soft.size(), 255);
+      sam::constrain_to_box(keepBox, img.width, img.height, *box);
+      for (std::size_t i = 0; i < soft.size(); ++i) soft[i] *= keepBox[i] / 255.0f;
+    }
+    // The low-res edge snapped onto the picture's own edges (a cell of the 256² logits is ~4 px of a 1080p frame).
+    const int snap = std::clamp(static_cast<int>(std::lround(std::max(w, h) / 320.0)), 2, 12);
+    soft = matte::guided_filter(soft, matte::luma(img.rgba, w, h), w, h, snap, 2e-3);
+    for (float& v : soft) v = std::clamp(v, 0.0f, 1.0f);
+    std::vector<subject::Pt> seeds;
+    for (const sam::Point& p : points)
+      if (p.label == 1) seeds.push_back({p.x, p.y});
+    if (box) seeds.push_back({(box->x0 + box->x1) / 2, (box->y0 + box->y1) / 2});
+    subject::keep_touching(soft, w, h, seeds, box);
+    if (intent.subtract) subject::harden_for_subtract(soft, w, h, std::max(2, snap / 2));
+    return subject_edit_finish(*in, editIn, img, strokes, std::move(soft), kx, ky, layerW, layerH, models.provider(), timings, t0);
+  }
   const auto tTrace = Clock::now();
   // The outline (48 points at most) needs no more than 1024 px on the long side: the mask is
   // upsampled and traced at that size and the points scaled back (3.5x fewer pixels at 1080p,
@@ -414,11 +691,14 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   const double sy = static_cast<double>(img.height) / mh;
   std::optional<sam::Box> maskBox;
   if (box) maskBox = sam::Box{box->x0 / sx, box->y0 / sy, box->x1 / sx, box->y1 / sy};
-  const std::vector<std::uint8_t> mask = sam::mask_from_decoder(out.iouScores.data, out.predMasks.data, mw, mh, maskBox);
-  if (mask.empty()) fail(ErrorCode::internal, "SAM decoder: unexpected output shapes");
+  constexpr std::size_t kPlane = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
+  if (out.predMasks.data.size() < (pick + 1) * kPlane) fail(ErrorCode::internal, "SAM decoder: unexpected output shapes");
+  std::vector<std::uint8_t> mask = sam::upsample_mask(out.predMasks.data, pick * kPlane, mw, mh, sam::letterbox(mw, mh).scale);
+  if (maskBox) sam::constrain_to_box(mask, mw, mh, *maskBox);
 
   control.progress(0.95, "Tracing the matte");
-  std::vector<trace::TracePoint> contour = sam::matte_contour(mask, mw, mh);
+  // The hover's outline: the same candidate the click keeps, drawn with up to 128 points.
+  std::vector<trace::TracePoint> contour = sam::matte_contour(mask, mw, mh, 128);
   for (trace::TracePoint& p : contour) {
     p.x *= sx;
     p.y *= sy;
@@ -441,10 +721,10 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   tj.set("decode", Json::number(timings.decode));
   tj.set("trace", Json::number(timings.trace));
   tj.set("total", Json::number(ms_since(t0)));
+  tj.set("candidates", std::move(cands));
+  tj.set("pick", Json::number(static_cast<double>(pick)));
   o.set("timings", std::move(tj));
-  o.set("iou", Json::number(out.iouScores.data.empty()
-                                ? 0.0
-                                : static_cast<double>(out.iouScores.data[sam::best_mask(out.iouScores.data)])));
+  o.set("iou", Json::number(out.iouScores.data.size() > pick ? static_cast<double>(out.iouScores.data[pick]) : 0.0));
   Json pts = Json::array();
   for (const trace::TracePoint& p : contour) {
     pts.arr_mut().push_back(Json::number(p.x));
@@ -764,7 +1044,16 @@ std::string object_matte_video_sam2(const Json& in, JobControl& control) {
       const auto addPoints = [&](const Json& a) {
         for (const sam::Point& p : points_of(a, kx, ky)) prompts.push_back({p.x, p.y, p.label});
       };
-      if (tracker.steps() == 0) {
+      // The user's own matte on the origin frame (a subject they selected and refined) starts the walk as it is.
+      std::vector<float> given;
+      if (tracker.steps() == 0 && in.at("originMatte").is_string()) {
+        given = stored_matte(in.at("originMatte").str(), w, h);
+        if (!given.empty()) {
+          const matte::Seeds seeds = matte::seeds_from_matte(given, w, h);
+          for (const sam::Point& p : seeds.points) prompts.push_back({p.x, p.y, p.label});
+        }
+      }
+      if (tracker.steps() == 0 && given.empty()) {
         addPoints(in.at("points"));
         if (in.at("box").is_array() && in.at("box").arr().size() == 4) {
           // SAM 2's prompt encoder takes a box as its two corners, labels 2 and 3.
@@ -774,9 +1063,9 @@ std::string object_matte_video_sam2(const Json& in, JobControl& control) {
         }
         if (prompts.empty()) fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.");
       }
-      strokes_at(in.at("strokes"), compTime, compFps, addPoints);
+      if (given.empty()) strokes_at(in.at("strokes"), compTime, compFps, addPoints);
       sam2::FrameResult res;
-      if (!tracker.step(img.rgba, img.width, img.height, prompts, res, error)) fail(ErrorCode::internal, "SAM 2: " + error);
+      if (!tracker.step(img.rgba, img.width, img.height, prompts, res, error, given)) fail(ErrorCode::internal, "SAM 2: " + error);
       modelMs += res.encodeMs + res.attendMs + res.decodeMs + res.memoryMs;
       std::vector<float>& alpha = res.alpha;
       std::size_t area = 0;
@@ -912,7 +1201,13 @@ std::string object_matte_video_child(const std::string& inputJson, JobControl& c
       std::vector<sam::Point> pts;
       std::optional<sam::Box> box;
       std::vector<float> warped = std::move(carried.warped);
-      if (first) {
+      std::vector<float> given;
+      if (first && in->at("originMatte").is_string()) given = stored_matte(in->at("originMatte").str(), w, h);
+      if (first && !given.empty()) {
+        const matte::Seeds seeds = matte::seeds_from_matte(given, w, h);
+        pts = seeds.points;
+        box = seeds.box;
+      } else if (first) {
         pts = points_of(in->at("points"), kx, ky);
         if (in->at("box").is_array() && in->at("box").arr().size() == 4) {
           const Json::Array& b = in->at("box").arr();
@@ -941,7 +1236,9 @@ std::string object_matte_video_child(const std::string& inputJson, JobControl& c
       const std::size_t plane = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
       const std::size_t best = sam::best_mask(dec.iouScores.data);
       std::vector<float> alpha = matte::soft_mask(dec.predMasks.data, best * plane, img.width, img.height, lb.scale);
-      if (box) {
+      if (!given.empty()) {
+        alpha = std::move(given);  // the origin frame is the user's matte
+      } else if (box) {
         const double mx = std::abs(box->x1 - box->x0) * (first ? 0.08 : 0.15) + 4;
         const double my = std::abs(box->y1 - box->y0) * (first ? 0.08 : 0.15) + 4;
         for (int y = 0; y < h; ++y)
@@ -1028,14 +1325,26 @@ class ObjectMatteVideoResult final : public JobResult {
 
   void apply(JobApply& a) const override {
     if (frames_.empty()) return;
-    if (!replace_.empty()) {
-      api::RemovePropertyGroups drop;
-      for (const std::string& id : replace_) drop.groups.push_back(api::PropRef{layer_, "masks/" + id});
-      (void)a.run(command(std::move(drop)));
+    // The new outline replaces the subject's old one (the one-frame edit's "Object Matte" mask) too.
+    std::vector<std::string> drop = replace_;
+    if (const doc::Node* node = a.document().node(layer_); node != nullptr) {
+      const Json mask = doc::get_node_mask(*node);
+      if (mask.at("paths").is_array())
+        for (const Json& p : mask.at("paths").arr())
+          if (p.at("id").is_string() && p.at("name").is_string() && p.at("name").str() == "Object Matte" &&
+              std::ranges::find(drop, p.at("id").str()) == drop.end()) {
+            drop.push_back(p.at("id").str());
+          }
+    }
+    if (!drop.empty()) {
+      api::RemovePropertyGroups rm;
+      for (const std::string& id : drop) rm.groups.push_back(api::PropRef{layer_, "masks/" + id});
+      (void)a.run(command(std::move(rm)));
     }
     if (storeMatte_) {
       api::SetLayerMatte m;
       m.layer = layer_;
+      m.cut = false;  // the subject is a selection: a new Object Matte card starts off (Remove Background turns it on)
       for (const MatteFrame& f : frames_) {
         api::ContentAwareFillFrame fr;
         fr.time = flicks_of(f.t);
@@ -1130,9 +1439,37 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     }
   }
 
+  // A walk starts from the subject's stored matte on its origin frame when there is one (the
+  // selection the user made and refined), not from the prompts again.
+  // With no prompts at all the walk starts from the stored frame nearest the origin, and that frame becomes the origin
+  // (the subject was selected on another frame than the playhead's: AE's base frame).
+  std::string originMatte;
+  std::optional<double> originSec;
+  if (spec.direction) {
+    if (const doc::Node* node = ctx.doc.node(fl.layer); node != nullptr) {
+      const Json& am = node->fx().at("alphaMatte");
+      if (am.is_object() && am.at("frames").is_array()) {
+        const double fps = fl.compFps > 0 ? fl.compFps : 30;
+        const doc::EditorView view{fl.comp, 0};
+        const double ot = seconds_of(spec.origin.value_or(spec.range.start));
+        const double kt = doc::comp_to_keyframe_time(ctx.doc, view, fl.layer, ot);
+        const Json* nearest = nullptr;
+        for (const Json& f : am.at("frames").arr()) {
+          if (!f.at("t").is_number() || !f.at("src").is_string()) continue;
+          if (std::abs(f.at("t").num() - kt) < 0.5 / fps) originMatte = f.at("src").str();
+          if (nearest == nullptr || std::abs(f.at("t").num() - kt) < std::abs(nearest->at("t").num() - kt)) nearest = &f;
+        }
+        if (originMatte.empty() && nearest != nullptr && spec.prompts.empty() && !spec.box) {
+          originMatte = nearest->at("src").str();
+          originSec = doc::keyframe_to_comp_time(ctx.doc, view, fl.layer, nearest->at("t").num());
+        }
+      }
+    }
+  }
   // objectMask.ts: a box wins over clicks.
   Json points = Json::array();
   Json input = Json::object();
+  if (!originMatte.empty()) input.set("originMatte", Json::string(originMatte));
   if (spec.box) {
     const api::Rect& r = *spec.box;
     if (!std::isfinite(r.x) || !std::isfinite(r.y) || !std::isfinite(r.width) || !std::isfinite(r.height)) {
@@ -1141,7 +1478,20 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     Json b = Json::array();
     b.arr_mut() = {Json::number(r.x), Json::number(r.y), Json::number(r.x + r.width), Json::number(r.y + r.height)};
     input.set("box", std::move(b));
-  } else {
+  }
+  if (spec.edit && !spec.direction) {
+    // A subject edit prompts from its strokes too (or paints / refines with them, no model at all).
+    for (const std::vector<api::Vec2>* list : {&spec.prompts, &spec.background_prompts})
+      for (const api::Vec2& p : *list) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y)) fail(ErrorCode::invalid_argument, "prompt must be finite", {.layer = spec.layer});
+        Json q = Json::array();
+        q.arr_mut() = {Json::number(p.x), Json::number(p.y), Json::number(list == &spec.prompts ? 1 : 0)};
+        points.arr_mut().push_back(std::move(q));
+      }
+    if (points.arr().empty() && spec.strokes.empty() && !spec.box) {
+      fail(ErrorCode::invalid_argument, "Nothing to select — click the subject or paint over it.", {.layer = spec.layer});
+    }
+  } else if (!spec.box) {
     auto add = [&](const std::vector<api::Vec2>& list, int label) {
       for (const api::Vec2& p : list) {
         if (!std::isfinite(p.x) || !std::isfinite(p.y)) fail(ErrorCode::invalid_argument, "prompt must be finite", {.layer = spec.layer});
@@ -1152,7 +1502,7 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     };
     add(spec.prompts, 1);
     add(spec.background_prompts, 0);
-    if (points.arr().empty()) {
+    if (points.arr().empty() && originMatte.empty()) {
       fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.",
            {.layer = spec.layer});
     }
@@ -1196,7 +1546,9 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     const double fps = fl.compFps > 0 ? fl.compFps : 30;
     const auto first = static_cast<std::int64_t>(std::llround(seconds_of(spec.range.start) * fps));
     const auto last = std::max(first, static_cast<std::int64_t>(std::llround(seconds_of(spec.range.start + spec.range.duration) * fps)) - 1);
-    const std::int64_t origin = spec.origin ? std::clamp(static_cast<std::int64_t>(std::llround(seconds_of(*spec.origin) * fps)), first, last) : first;
+    const std::int64_t origin = originSec   ? std::clamp(static_cast<std::int64_t>(std::llround(*originSec * fps)), first, last)
+                                : spec.origin ? std::clamp(static_cast<std::int64_t>(std::llround(seconds_of(*spec.origin) * fps)), first, last)
+                                              : first;
     auto walk = [&](std::int64_t from, std::int64_t to) {
       Json steps = Json::array();
       const std::int64_t step = to >= from ? 1 : -1;
@@ -1288,6 +1640,76 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
       run.msPerFrame = num_or(*r, "msPerFrame", 0);
       if (r->at("stageMs").is_object()) run.stageMs = r->at("stageMs");
       return std::make_unique<ObjectMatteVideoResult>(layer, std::move(frames), status, store, replace, std::move(run));
+    };
+    return job;
+  }
+
+  if (spec.edit) {
+    const api::SubjectEdit& e = *spec.edit;
+    const double t = seconds_of(spec.range.start);
+    Json ej = Json::object();
+    ej.set("tool", Json::string(e.tool == api::SubjectTool::paint ? "paint" : e.tool == api::SubjectTool::refine ? "refine" : "segment"));
+    ej.set("op", Json::string(e.op == api::SubjectOp::add ? "add" : e.op == api::SubjectOp::subtract ? "subtract" : "replace"));
+    if (!std::isfinite(e.radius) || e.radius < 0) fail(ErrorCode::invalid_argument, "radius must be >= 0", {.layer = spec.layer});
+    ej.set("radius", Json::number(e.radius > 0 ? e.radius : 10));
+    Json strokes = Json::array();
+    for (const api::ObjectMatteStroke& st : spec.strokes) {
+      Json pts = Json::array();
+      for (const api::Vec2& p : st.points) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y)) fail(ErrorCode::invalid_argument, "stroke points must be finite", {.layer = spec.layer});
+        Json q = Json::array();
+        q.arr_mut() = {Json::number(p.x), Json::number(p.y)};
+        pts.arr_mut().push_back(std::move(q));
+      }
+      strokes.arr_mut().push_back(std::move(pts));
+    }
+    ej.set("strokes", std::move(strokes));
+    // The frame's matte now — the stored frame the renderer shows at this time (the nearest one).
+    if (const doc::Node* node = ctx.doc.node(fl.layer); node != nullptr) {
+      const Json& am = node->fx().at("alphaMatte");
+      if (am.is_object() && am.at("frames").is_array()) {
+        const double kt = doc::comp_to_keyframe_time(ctx.doc, doc::EditorView{fl.comp, 0}, fl.layer, t);
+        const Json* best = nullptr;
+        for (const Json& f : am.at("frames").arr())
+          if (f.at("t").is_number() && f.at("src").is_string() && (best == nullptr || std::abs(f.at("t").num() - kt) < std::abs(best->at("t").num() - kt))) best = &f;
+        if (best != nullptr) ej.set("base", best->at("src"));
+      }
+    }
+    std::filesystem::path folder(spec.output_folder.value_or(""));
+    if (folder.empty()) {
+      const std::filesystem::path project(ctx.projectPath);
+      folder = project.empty() ? std::filesystem::temp_directory_path() / "premation-object-matte" / spec.layer
+                               : project.parent_path() / "Object Matte" / spec.layer;
+    }
+    const std::u8string fu = folder.u8string();
+    ej.set("folder", Json::string(std::string(fu.begin(), fu.end())));
+    ej.set("compTime", Json::number(t));
+    ej.set("compFps", Json::number(fl.compFps > 0 ? fl.compFps : 30));
+    input.set("edit", std::move(ej));
+    PreparedJob job;
+    job.kind = "objectMatte";
+    job.work = [layer = fl.layer, inputJson = js::stringify(input), t, cut = e.cut, replace = spec.replace_masks](JobControl& control) -> std::unique_ptr<JobResult> {
+      const std::optional<std::string> out = run_in_worker("objectMatte", inputJson, control, WorkerCall{});
+      if (!out) return nullptr;
+      const std::optional<Json> r = js::parse(*out);
+      if (!r || !r->is_object() || !r->at("file").is_string() || !r->at("contour").is_array()) fail(ErrorCode::internal, "objectMatte: bad child result");
+      const double w = num_or(*r, "width", 0);
+      const double h = num_or(*r, "height", 0);
+      const double lw = num_or(*r, "layerWidth", 0);
+      const double lh = num_or(*r, "layerHeight", 0);
+      if (!(w > 0) || !(h > 0)) fail(ErrorCode::internal, "objectMatte: bad child result");
+      api::BezierPath path;
+      path.closed = true;
+      const Json::Array& c = r->at("contour").arr();
+      for (std::size_t i = 0; i + 1 < c.size(); i += 2) {
+        path.vertices.push_back((c[i].num() / w - 0.5) * lw);
+        path.vertices.push_back((c[i + 1].num() / h - 0.5) * lh);
+      }
+      path.in_tangents.assign(path.vertices.size(), 0.0);
+      path.out_tangents.assign(path.vertices.size(), 0.0);
+      return std::make_unique<SubjectEditResult>(layer, t, r->at("file").str(), std::move(path), num_or(*r, "coverage", 0), cut, replace,
+                                                 r->at("provider").is_string() ? r->at("provider").str() : std::string(),
+                                                 r->at("timings").is_object() ? std::optional<Json>(r->at("timings")) : std::nullopt);
     };
     return job;
   }

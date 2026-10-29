@@ -36,7 +36,10 @@ fn displayPremul(s : vec4<f32>) -> vec4<f32> {
 }
 
 @fragment fn fs(@location(0) uv : vec2<f32>) -> @location(0) vec4<f32> {
-  let cov = clamp(obj.p0.x, 0.0, 1.0) * textureSampleLevel(scopeTex, smp, uv, 0.0).a;
+  // p0.y: Apply to Background — the effect lands outside the scope (the subject matte's inverse).
+  var inside = textureSampleLevel(scopeTex, smp, uv, 0.0).a;
+  if (obj.p0.y > 0.5) { inside = 1.0 - inside; }
+  let cov = clamp(obj.p0.x, 0.0, 1.0) * inside;
   let outP = displayPremul(textureSampleLevel(tex, smp, uv, 0.0));
   let inP = displayPremul(textureSampleLevel(tex2, smp, uv, 0.0));
   let m = inP * (1.0 - cov) + outP * cov;

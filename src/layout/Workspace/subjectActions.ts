@@ -7,7 +7,7 @@
  * user can edit afterwards: nothing here is a special mode.
  */
 
-import type { PropertyInit } from '@motion/engine-api';
+import type { Command, PropertyInit } from '@motion/engine-api';
 import { edit } from '@core/engine/uiEdits';
 import { values } from '@core/engine/propRefs';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
@@ -21,7 +21,7 @@ import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
 import type { ContextMenuItem } from '@stores/contextMenuStore';
 import { t } from '@core/i18n';
-import { placeBehindSubjectEdit } from './placeBehindSubject';
+import { objectMatteCard } from '@core/workspace/objectMatteEffect';
 import { newLayerFromSubject } from './newLayerFromSubjectCommand';
 import { runCreateSubjectTrack } from './placeBehindSubjectCommand';
 import { matteOutlineKeys } from './subjectTrack';
@@ -45,7 +45,7 @@ export interface SubjectState {
   /** The matte runs through the shot (keyed outline), not one frame. */
   followed: boolean;
   frozen: boolean;
-  /** The selection cuts the layer (its mask is Add): the background is removed. */
+  /** The selection cuts the layer (its Object Matte effect is on): the background is removed. */
   cuts: boolean;
 }
 
@@ -67,8 +67,15 @@ export function subjectStateNow(layer: string): SubjectState {
     selected: masks.some((x) => MATTE_NAMES.has(x.name)),
     followed,
     frozen: r.frozen.length > 0,
-    cuts: r.live.length > 0 || r.frozen.length > 0,
+    cuts: cutsNow(layer, r),
   };
+}
+
+/** Whether the subject cuts the layer: its Object Matte effect is on (or an old tool's Add mask cuts). */
+function cutsNow(layer: string, r: { live: string[] }): boolean {
+  const card = objectMatteCard(layer);
+  if (card) return card.enabled !== false;
+  return mirrorMaskHeaders(documentMirror().tree(layer)).some((x) => r.live.includes(x.id) && x.cuts);
 }
 
 /** The actions as context-menu rows (right-click ▸ Subject, the subject chip). */
@@ -92,7 +99,7 @@ export async function subjectStateOf(layer: string): Promise<SubjectState> {
     selected: masks.some((x) => MATTE_NAMES.has(x.name)),
     followed: (await matteOutlineKeys(layer)) !== null,
     frozen: r.frozen.length > 0,
-    cuts: r.live.length > 0 || r.frozen.length > 0,
+    cuts: cutsNow(layer, r),
   };
 }
 
@@ -132,8 +139,14 @@ export async function followSubject(layer: string): Promise<void> {
   }
 }
 
-async function addEffect(layer: string, label: string, effect: string, params: PropertyInit[]): Promise<boolean> {
-  const res = await edit(label, { type: 'addEffect', layers: [layer], effect, params });
+let fxSeq = 0;
+
+/** One effect on the layer, one undo entry; `scope` makes it Apply To the subject or the background. */
+async function addEffect(layer: string, label: string, effect: string, params: PropertyInit[], scope?: 'subject' | 'background'): Promise<boolean> {
+  const id = `fx_subject_${Date.now().toString(36)}_${(fxSeq++).toString(36)}`;
+  const commands: Command[] = [{ type: 'addEffect', layers: [layer], effect, params, id }];
+  if (scope) commands.push({ type: 'setProperty', prop: { layer, path: `effects/${id}/compositing/subject` }, value: values.string(scope) });
+  const res = await edit(label, commands);
   if (res.ok) useSelectionStore.getState().set([layer]);
   return res.ok;
 }
@@ -185,28 +198,25 @@ export function colorSubject(layer: string, look: keyof typeof COLOR_LOOKS): Pro
   return addEffect(layer, t('workspace.subjects.colorLabel', 'Color Subject'), 'selective-color-ai', [...COLOR_LOOKS[look].params]);
 }
 
-/** A cut-out copy over the original, the original blurred: portrait-style depth. */
+/** Portrait-style depth: a Gaussian Blur that Applies To the background — one video, the subject stays sharp. */
 export async function blurBackground(layer: string): Promise<boolean> {
-  const own = documentMirror().layer(layer);
-  if (!own) return false;
-  const made = await placeBehindSubjectEdit({ footage: layer, behind: [], comp: own.comp, parent: own.parent ?? own.comp });
-  if (!made) return false;
-  const res = await edit(t('workspace.subjects.blurLabel', 'Blur Background'), { type: 'addEffect', layers: [layer], effect: 'gaussian-blur', params: [{ path: 'blurriness', value: values.scalar(24) }] });
-  if (res.ok) {
-    useSelectionStore.getState().set([layer]);
-    notify(made.hadMatte
-      ? t('workspace.subjects.blurDone', 'Background blurred behind the subject.')
-      : t('workspace.subjects.blurNeedsMatte', 'Background blurred. Select the subject on the top copy to keep them sharp.'));
-  }
-  return res.ok;
+  const ok = await addEffect(layer, t('workspace.subjects.blurLabel', 'Blur Background'), 'gaussian-blur', [{ path: 'blurriness', value: values.scalar(24) }], 'background');
+  if (ok) notify(t('workspace.subjects.blurDone', 'Background blurred behind the subject.'));
+  return ok;
 }
 
-/** Remove Background toggles whether the selection cuts the layer (its masks Add ⇄ None). */
+/** Remove Background: the subject's Object Matte effect on (the layer is cut to the subject) or off. */
 async function toggleRemoveBackground(layer: string, cuts: boolean): Promise<void> {
+  const label = cuts ? t('workspace.subjects.keepBackground', 'Keep Background') : t('workspace.subjects.removeBackground', 'Remove Background');
+  const card = objectMatteCard(layer);
+  if (card) {
+    await edit(label, { type: 'setGroupEnabled', groups: [{ layer, path: `effects/${card.id}` }], enabled: !cuts });
+    return;
+  }
+  // A layer selected with the old tool: its cut masks Add ⇄ None.
   const masks = mirrorMaskHeaders(documentMirror().tree(layer)).filter((x) => x.name === ROTO_PATH_NAME || x.name === 'Roto Brush (Frozen)');
   if (masks.length === 0) return;
-  await edit(cuts ? t('workspace.subjects.keepBackground', 'Keep Background') : t('workspace.subjects.removeBackground', 'Remove Background'),
-    masks.map((x) => ({ type: 'setProperty' as const, prop: { layer, path: `masks/${x.id}/mode` }, value: values.choice(cuts ? 'none' : 'add') })));
+  await edit(label, masks.map((x) => ({ type: 'setProperty' as const, prop: { layer, path: `masks/${x.id}/mode` }, value: values.choice(cuts ? 'none' : 'add') })));
 }
 
 export interface SubjectActionHooks {

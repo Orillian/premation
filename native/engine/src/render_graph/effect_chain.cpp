@@ -653,6 +653,7 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     std::string_view name;
     double amount;
     TexRef scope;  ///< E4: an effect-scoped mask in the buffer's space (empty = the whole buffer)
+    bool invert = false;  ///< Apply to: Background — the effect lands outside the scope
   };
   std::optional<BlendBack> blendBack;
   auto land = [&] {
@@ -665,7 +666,7 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
       if (n != b.name && n != curName) { dest = n; break; }
     }
     if (dest.empty()) return;
-    const std::array<Vec4, 1> rows{{{b.amount, 0, 0, 0}}};
+    const std::array<Vec4, 1> rows{{{b.amount, b.invert ? 1.0 : 0.0, 0, 0}}};
     Commands c = one(b.scope ? Mat::EFFECT_SCOPE_FX_MATERIAL : Mat::EFFECT_OPACITY_FX_MATERIAL,
                      pack_fx_block(ctx.packer(), mvp, targetUv, rows, fxBox), curTex);
     c.last().mask = b.tex;
@@ -755,7 +756,7 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
         Commands keep;
         emit_textured(ctx, keep, mvp, Color::white(), 1, Blend::none, curTex, ctx.linear_clamp(), targetUv, kIdentityColor, true);
         ctx.draw_into(kFxBlendInput, keep, true);
-        blendBack = BlendBack{texOf(kFxBlendInput), kFxBlendInput, std::max(0.0, fx.num("effectOpacity", 1)), scope};
+        blendBack = BlendBack{texOf(kFxBlendInput), kFxBlendInput, std::max(0.0, fx.num("effectOpacity", 1)), scope, fx.num("scopeInvert") > 0.5};
         if (ctx.effectStats != nullptr) ++ctx.effectStats->blendSpans;
       }
       spanLeft = static_cast<std::size_t>(span) - 1;
@@ -817,7 +818,7 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
     if (!inSpan && type != "plugin") {
       const TexRef scope = scopeOf(fx);
       if ((fx.has("effectOpacity") && fx.num("effectOpacity") < 1) || scope) {
-        blendBack = BlendBack{curTex, curName, std::max(0.0, fx.num("effectOpacity", 1)), scope};
+        blendBack = BlendBack{curTex, curName, std::max(0.0, fx.num("effectOpacity", 1)), scope, fx.num("scopeInvert") > 0.5};
       }
     }
 

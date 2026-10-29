@@ -1745,6 +1745,7 @@ void Walk::build_node(const doc::Node& n) {
   l.blend = read_node_blend(n);
   l.mask = std::move(mask);
   l.matte = read_matte_of(n);
+  if (const Json& bs = n.fx().at("behindSubject"); bs.is_string() && !bs.str().empty()) l.behindSubject = bs.str();
   l.isAdjustment = read_node_adjustment(n);
   l.draft = read_node_quality_s(n) == "draft";
   if (doc::read_node_paint(n)) {  // paint_port.cpp: the frame's live strokes
@@ -1794,6 +1795,7 @@ void Walk::build_node(const doc::Node& n) {
     // effect disabled or removed, the layer shows uncut. A record from before
     // the effect existed still stands in for the footage.
     if (best->at("src").is_string()) {
+      l.subjectSrc = best->at("src").str();
       const Json& by = fx.at("alphaMatte").at("cutByEffect");
       const bool byEffect = by.is_bool() && by.b();
       const bool hasCard = std::ranges::any_of(l.effects, [](const Json& e) { return e.at("type").is_string() && e.at("type").str() == "object-matte"; });
@@ -2445,6 +2447,20 @@ Snapshot Walk::run() {
     }
   };
   resolveMattes(layers_);
+  // Behind Subject: a layer hidden behind another layer's subject reads that layer's matte frame.
+  {
+    std::unordered_map<std::string, std::size_t> idx;
+    for (std::size_t i = 0; i < layers_.size(); ++i) idx.emplace(layers_[i].id, i);
+    for (RLayer& l : layers_) {
+      if (!l.behindSubject) continue;
+      const auto it = idx.find(*l.behindSubject);
+      if (it == idx.end() || it->second >= layers_.size() || layers_[it->second].id == l.id || !layers_[it->second].subjectSrc) {
+        l.behindSubject.reset();
+        continue;
+      }
+      layers_[it->second].subjectReferenced = true;
+    }
+  }
 
   // The viewer's transparency grid (AE's Toggle Transparency Grid): the
   // composition over a checkerboard instead of its background colour, so what

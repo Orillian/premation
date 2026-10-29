@@ -352,8 +352,9 @@ export const placeBehindSubjectDef: AiToolDef = {
   kind: 'write',
   description:
     'Put layers BEHIND the person or object in a video or photo — the "text behind the subject" look. ' +
-    'Duplicates the footage layer; the copy on top keeps only the subject (an AI Object Matte cut-out), ' +
-    'and the given layers go between the original and the copy, so the subject passes in front of them. ' +
+    'The given layers move directly above the footage layer and are set Behind Subject: they are hidden ' +
+    'wherever the subject of the footage (its AI Object Matte, soft edges and hair included) is, so the subject ' +
+    'passes in front of them. Nothing is duplicated. ' +
     'Give `point` (a spot on the subject, footage pixels from the top-left, at the playhead) to cut the ' +
     'subject out through the whole shot; without it, an existing matte on the footage is used, or the ' +
     'user is asked to click the subject. One undo step for the layering.',

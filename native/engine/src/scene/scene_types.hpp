@@ -225,6 +225,16 @@ struct RLayer {
   /// effect reads it as a matte (effects_spatial.hpp reads_own_object_matte)
   /// instead of it standing in for the footage.
   std::optional<std::string> objectMatteSrc;
+  /// The stored subject matte frame nearest the layer's time, whatever reads it
+  /// (a layer set Behind this subject reads it through `subjectReferenced`).
+  std::optional<std::string> subjectSrc;
+  /// Another layer of the stack is Behind this layer's subject: the matte frame
+  /// is requested as a texture (object_matte_key) for that layer's cut.
+  bool subjectReferenced = false;
+  /// Behind Subject (layer/behindSubject): the footage layer whose subject this
+  /// layer is hidden behind — it shows only outside that layer's subject matte.
+  /// Cleared when that layer has no subject at this time.
+  std::optional<std::string> behindSubject;
   std::optional<std::array<double, 4>> uvRect;
   bool premultipliedSource = false;
   /// Interpret Footage ▸ Remove Pulldown (buildSnapshot `pulldownSource`): the

@@ -267,6 +267,68 @@ export async function segmentStrokesToMask(
   return out.result?.mask ?? null;
 }
 
+/** How a subject edit changes the frame's matte (the Object Matte tool group). */
+export interface SubjectEditRequest {
+  /** segment: the model from clicks / box / strokes; paint: the brush exactly; refine: soft alpha in the brush's band. */
+  tool: 'segment' | 'paint' | 'refine';
+  op: 'replace' | 'add' | 'subtract';
+  /** Clicks, layer-local px (centre origin). */
+  clicks?: ReadonlyArray<{ x: number; y: number }>;
+  /** Points that are NOT the subject (a lasso's outside), layer-local px. */
+  negatives?: ReadonlyArray<{ x: number; y: number }>;
+  /** Brush strokes, layer-local px. */
+  strokes?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>;
+  /** Brush radius, layer px. */
+  radius?: number;
+  box?: RotoBox | null;
+}
+
+/** What a subject edit left: the frame's coverage (0…1) and its outline (layer-local px, x y pairs). */
+export interface SubjectEditResult {
+  coverage: number;
+  outline: number[];
+}
+
+/**
+ * Edit the layer's SUBJECT on the frame at `timeSec`: its soft matte (a
+ * picture, not a mask path) is segmented, painted or refined and merged into
+ * the layer's stored matte, one undo entry. The subject is a selection — the
+ * footage stays whole until Remove Background; effects read it through Apply
+ * To and text through Behind Subject. Null when there was nothing to edit.
+ */
+export async function runSubjectEdit(nodeId: string, timeSec: number, req: SubjectEditRequest): Promise<SubjectEditResult | null> {
+  if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
+  const size = await layerSize(nodeId);
+  if (!size) return null;
+  const toPx = (p: { x: number; y: number }) => ({ x: p.x + size.width / 2, y: p.y + size.height / 2 });
+  const rect = req.box ? boxToRect(req.box, size) : null;
+  const box = rect && rect.width > 1 && rect.height > 1 ? rect : null;
+  const strokes = (req.strokes ?? []).filter((s) => s.length > 0);
+  if (!box && strokes.length === 0 && (req.clicks?.length ?? 0) === 0) return null;
+  // The old tool's cut masks give way to the subject (a layer made before the subject was a matte).
+  const replace = mirrorMaskHeaders(documentMirror().tree(nodeId)).filter((m) => m.name === ROTO_PATH_NAME).map((m) => m.id);
+  const out = requireEngineJob(await runEngineJob<{ coverage?: number; outline?: number[] }>({
+    kind: 'objectMatte',
+    value: {
+      layer: nodeId,
+      range: { start: secondsToFlicks(timeSec), duration: secondsToFlicks(1 / 30) },
+      prompts: (req.clicks ?? []).map(toPx),
+      backgroundPrompts: (req.negatives ?? []).map(toPx),
+      encoderModel: '',
+      decoderModel: '',
+      replaceMasks: replace,
+      ...(box ? { box } : {}),
+      strokes: strokes.map((s) => ({ time: secondsToFlicks(timeSec), points: s.map(toPx), background: false })),
+      edit: { tool: req.tool, op: req.op, radius: Math.max(0.5, req.radius ?? 10), cut: false },
+    },
+  }), 'Object Matte');
+  if (out.status !== 'done') {
+    if (out.status === 'failed') throw new Error(out.error?.message ?? 'Object Matte failed');
+    return null;
+  }
+  return { coverage: out.result?.coverage ?? 0, outline: out.result?.outline ?? [] };
+}
+
 /**
  * Propagate the matte forward from `fromSec` to `toSec` in the engine, from
  * the tool's current outline and every stroke (layer px).
@@ -352,7 +414,9 @@ export async function propagateObjectMatte(
   const originBox = boxAt(opts.box, opts.origin, opts.fps);
   const rect = originBox ? boxToRect(originBox, size) : null;
   const box = rect && rect.width > 1 && rect.height > 1 ? rect : null;
-  if (here.fg.length === 0 && !box) throw new Error('Select the subject on this frame first: click it, or paint a foreground stroke.');
+  // No prompts here: the engine starts from the subject's stored matte (its frame nearest the origin).
+  const hasSubject = mirrorMaskHeaders(documentMirror().tree(nodeId)).some((m) => m.name === 'Object Matte');
+  if (here.fg.length === 0 && !box && !hasSubject) throw new Error('Select the subject on this frame first: click it, or paint a foreground stroke.');
   const half = 0.5 / Math.max(1, opts.fps);
   const corrections = strokes
     .filter((s) => s.time !== undefined && Math.abs(s.time - opts.origin) > half)

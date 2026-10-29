@@ -22,14 +22,14 @@ import { useUIStore } from '@stores/uiStore';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useActiveCompSize, useMirrorRevisionFrame } from '@hooks/useMirrorFrame';
 import { useCurrentTime } from '@stores/playbackClockStore';
-import { useRotoBrushStore } from '@stores/rotoBrushStore';
+import { lassoPrompts, useRotoBrushStore } from '@stores/rotoBrushStore';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import {
   boxAt,
+  runSubjectEdit,
   previewObjectMatte,
-  segmentStrokesToMask,
-  strokesAt,
   type ObjectMattePreview,
+  type SubjectEditRequest,
 } from '@core/workspace/rotoBrushTool';
 import { explainObjectMatteError } from '@core/tracking/samModelInstall';
 import { settingsFps } from '@core/mirror/compFacts';
@@ -204,22 +204,21 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
     }, HOVER_MS);
   };
 
-  /** Segment this frame from the store's prompts (after a click or a box). */
-  const segment = (): void => {
+  /**
+   * Select on this frame: the subject's matte is segmented from the click /
+   * box / lasso and replaces (plain), adds to (Shift) or is cut from (Alt)
+   * what is selected — the soft matte at full size, its edge snapped to the
+   * picture, only the region the prompt touched kept.
+   */
+  const select = (req: SubjectEditRequest): void => {
     if (!nodeId) return;
     const store = useRotoBrushStore.getState();
     store.setBusy(true);
     store.setStatus(t('workspace.objectMatte.selecting', 'Selecting…'));
-    const f = fps();
-    void segmentStrokesToMask(nodeId, strokesAt(store.strokes, time, f), time, {
-      featherPx: store.featherPx,
-      replacePathId: store.maskPathId,
-      box: boxAt(store.box, time, f),
-    })
-      .then((pathId) => {
+    void runSubjectEdit(nodeId, time, req)
+      .then((r) => {
         const s = useRotoBrushStore.getState();
-        s.setMaskPathId(pathId);
-        s.setStatus(pathId ? null : t('workspace.objectMatte.nothing', 'Nothing found there — click the subject itself, or drag a box around it.'));
+        s.setStatus(r && r.coverage > 0 ? null : t('workspace.objectMatte.nothing', 'Nothing found there — click the subject itself, or drag a box around it.'));
         getWorkspaceController().requestRender();
       })
       .catch((err: unknown) => {
@@ -227,38 +226,17 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
       })
       .finally(() => useRotoBrushStore.getState().setBusy(false));
   };
+  const opOf = (shift: boolean, alt: boolean): SubjectEditRequest['op'] => (alt ? 'subtract' : shift ? 'add' : 'replace');
 
   const click = (p: Pt, shift: boolean, alt: boolean): void => {
     if (!nodeId) return;
-    const mode = alt ? 'subtract' : shift ? 'add' : 'new';
-    const store = useRotoBrushStore.getState();
-    store.addPoint(p, time, mode, fps());
     const held = hoverRef.current;
     hoverRef.current = null;
     setHover(null);
     hoverSeq.current++;
-    // A plain click where the preview was taken: write what the user saw.
-    if (mode === 'new' && held && held.time === time && Math.hypot(held.at.x - p.x, held.at.y - p.y) <= SAME_SPOT_PX) {
-      store.setBusy(true);
-      void held.preview.apply()
-        .then((pathId) => {
-          if (pathId) {
-            useRotoBrushStore.getState().setMaskPathId(pathId);
-            useRotoBrushStore.getState().setStatus(null);
-            getWorkspaceController().requestRender();
-            return false;
-          }
-          return true;
-        })
-        .catch(() => true)
-        .then((again) => {
-          useRotoBrushStore.getState().setBusy(false);
-          if (again) segment();
-        });
-      return;
-    }
+    // The hover only showed the outline; the click makes the matte itself (the frame's encoding is warm).
     held?.preview.discard();
-    segment();
+    select({ tool: 'segment', op: opOf(shift, alt), clicks: [p] });
   };
 
   useEffect(() => {
@@ -338,21 +316,25 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
           const d = drag;
           setDrag(null);
           if (marquee === 'lasso') {
-            if (!useRotoBrushStore.getState().setLasso(d.path, time, fps())) {
+            const prompts = lassoPrompts(d.path);
+            if (!prompts) {
               useRotoBrushStore.getState().setStatus(t('workspace.objectMatte.lassoEmpty', 'Draw the lasso around the subject (a closed loop).'));
               return;
             }
-            segment();
+            // The object inside the loop: its bounds as the box, the inside point nearest its middle as the click.
+            const xs = d.path.map((q) => q.x);
+            const ys = d.path.map((q) => q.y);
+            const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+            const middle = prompts.inside.reduce((a, b) => (Math.hypot(b.x - cx, b.y - cy) < Math.hypot(a.x - cx, a.y - cy) ? b : a));
+            select({ tool: 'segment', op: opOf(press.shift, press.alt), clicks: [middle],
+              box: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), time } });
             return;
           }
           if (Math.abs(d.to.x - d.from.x) < 2 || Math.abs(d.to.y - d.from.y) < 2) return;
-          const store = useRotoBrushStore.getState();
-          // A box starts the selection over on this frame (it wins over points in the engine).
-          const f = fps();
-          const half = 0.5 / Math.max(1, f);
-          for (const s of store.strokes) if (s.time === undefined || Math.abs(s.time - time) <= half) store.removeStroke(s.id);
-          store.setBox({ x0: d.from.x, y0: d.from.y, x1: d.to.x, y1: d.to.y, time });
-          segment();
+          const b = { x0: d.from.x, y0: d.from.y, x1: d.to.x, y1: d.to.y, time };
+          useRotoBrushStore.getState().setBox(b);
+          select({ tool: 'segment', op: opOf(press.shift, press.alt), box: b });
           return;
         }
         const p = toLocal(e.clientX, e.clientY) ?? press.from;
