@@ -12,17 +12,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@components/Modal';
 import { Button } from '@components/Button';
 import { engine } from '@core/engine/engineInstance';
+import type { PropertyInit } from '@motion/engine-api';
 import { values } from '@core/engine/propRefs';
+import { edit } from '@core/engine/uiEdits';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
 import { playheadSeconds } from '@core/timeline/timelineView';
 import { ROTO_PATH_NAME } from '@core/workspace/rotoBrushTool';
 import { documentMirror } from '@stores/documentMirror';
 import { useSelectionStore } from '@stores/selectionStore';
 import { useUIStore } from '@stores/uiStore';
+import { useCompositionStore } from '@stores/compositionStore';
 import { useTextBehindStore } from '@stores/textBehindStore';
 import { applyAnimationPresetEdit } from '@layout/Menu/appEdits';
 import { t } from '@core/i18n';
 import { runPlaceBehindSubject } from './placeBehindSubjectCommand';
+import { subjectBoundsInComp } from './placeBehindSubject';
 import { followSubject, subjectStateNow } from './subjectActions';
 import styles from './TextBehindDialog.module.css';
 
@@ -37,6 +41,9 @@ const ENTRANCES = [
   { id: 'Word Rise', label: () => t('workspace.textBehind.animate.words', 'Words rise') },
 ] as const;
 
+/** Soft Edge: the subject's edge feathered by this many px where it covers the title. */
+const SOFT_EDGE_PX = 4;
+
 const MATTE_NAMES = new Set(['Object Matte', ROTO_PATH_NAME, 'Roto Brush (Frozen)']);
 
 export function TextBehindDialog(): JSX.Element | null {
@@ -47,6 +54,8 @@ export function TextBehindDialog(): JSX.Element | null {
   const [entrance, setEntrance] = useState<string>('Rise Up');
   // A subject selected on one frame does not move with the footage: follow it first (AE: propagate, then stack).
   const [followFirst, setFollowFirst] = useState(true);
+  // The subject's edge feathered where it covers the title (layer/behindSubjectSoftness).
+  const [softEdge, setSoftEdge] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const m = documentMirror();
@@ -74,10 +83,31 @@ export function TextBehindDialog(): JSX.Element | null {
       if (followFirst && !followed) await followSubject(subject);
       let behind = texts;
       if (behind.length === 0) {
-        // A new title, created above the footage, then moved behind the person.
+        // A new title, created above the footage, then moved behind the person: big and bold
+        // across the subject at chest height, so the person visibly stands in front of it.
+        const text = t('workspace.textBehind.newText', 'YOUR TITLE');
+        const box = await subjectBoundsInComp(subject, playheadSeconds());
+        const compW = useCompositionStore.getState().comp().width || 1920;
+        const init: PropertyInit[] = [
+          { path: 'text/sourceText', value: values.string(text) },
+          { path: 'text/fontFamily', value: values.string('Anton') },
+        ];
+        if (box) {
+          // Cap height about a quarter of the person: a headline they stand in front of. Anton is
+          // ~0.45 em a glyph, so the line is kept inside 90 % of the frame.
+          const byHeight = (box.y1 - box.y0) * 0.28;
+          const byWidth = (compW * 0.9) / (0.45 * Math.max(4, text.length));
+          const fontSize = Math.round(Math.max(48, Math.min(byHeight, byWidth)));
+          init.push({ path: 'text/fontSize', value: values.scalar(fontSize) });
+          // Centred on the person, slid back inside the footage's frame when that would run off it.
+          const half = (0.45 * fontSize * text.length) / 2;
+          const lo = box.frame.x0 + half;
+          const hi = box.frame.x1 - half;
+          const cx = lo <= hi ? Math.min(hi, Math.max(lo, (box.x0 + box.x1) / 2)) : (box.frame.x0 + box.frame.x1) / 2;
+          init.push({ path: 'transform/position', value: { kind: 'vec2', value: { x: cx, y: box.y0 + (box.y1 - box.y0) * 0.38 } } });
+        }
         const res = await engine().execute({
-          type: 'createLayer', comp, kind: 'text', name: t('workspace.textBehind.newName', 'Your Title'),
-          init: [{ path: 'text/sourceText', value: values.string(t('workspace.textBehind.newText', 'YOUR TITLE')) }],
+          type: 'createLayer', comp, kind: 'text', name: t('workspace.textBehind.newName', 'Your Title'), init,
         });
         if (!res.ok) {
           useUIStore.getState().notify({ level: 'warning', message: res.error.message, durationMs: 4000 });
@@ -87,6 +117,11 @@ export function TextBehindDialog(): JSX.Element | null {
       }
       const out = await runPlaceBehindSubject([subject, ...behind]);
       if (!out.ok) return;
+      if (softEdge) {
+        await edit(t('workspace.textBehind.softEdge', 'Soft Edge'), behind.map((id) => ({
+          type: 'setProperty' as const, prop: { layer: id, path: 'layer/behindSubjectSoftness' }, value: values.scalar(SOFT_EDGE_PX),
+        })));
+      }
       if (entrance !== 'none') await applyAnimationPresetEdit(behind, entrance, playheadSeconds());
       useSelectionStore.getState().set(behind);
       close();
@@ -133,6 +168,10 @@ export function TextBehindDialog(): JSX.Element | null {
           {t('workspace.textBehind.followFirst', 'Follow the subject through the shot first (it is selected on one frame)')}
         </label>
       )}
+      <label className={styles.check}>
+        <input type="checkbox" checked={softEdge} onChange={(e) => setSoftEdge(e.target.checked)} />
+        {t('workspace.textBehind.softEdgeLabel', 'Soft edge where they overlap')}
+      </label>
     </Modal>
   );
 }

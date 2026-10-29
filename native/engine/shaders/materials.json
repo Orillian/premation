@@ -405,7 +405,9 @@
     "fxx-mstroke-strip",
     "fxx-selcol",
     "fxx-selcol-matte",
-    "fxx-omatte"
+    "fxx-omatte",
+    "fxx-sfill-pre",
+    "fxx-sfill-post"
   ],
   "materials": [
     {

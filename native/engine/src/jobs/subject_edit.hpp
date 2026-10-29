@@ -74,7 +74,7 @@ struct CandidateScore {
 /// Object Mask lights all of them): one click per grid point, each answered by
 /// the candidate a click would select (choose_candidate, lone click), kept when
 /// it is a whole object — SAM rates it well, it is not the background (≤ one
-/// frame edge, ≤ 30 % of the frame: a wall or the floor) and not a speck — and not the same object as
+/// two frame edges, ≤ 30 % of the frame: not a wall or the floor) and not a speck — and not the same object as
 /// one already kept (IoU ≥ 0.6) nor a part of it (the larger one stays).
 struct Proposal {
   std::size_t point = 0;      ///< which grid point found it (its click selects it again)
@@ -102,6 +102,11 @@ void keep_touching(std::vector<float>& alpha, int width, int height, std::span<c
 /// blended into `base` by the band. Pixels where the two colours are alike keep `base`.
 [[nodiscard]] std::vector<float> refine_band(std::span<const std::uint8_t> rgba, int width, int height, std::span<const float> base,
                                              std::span<const float> band, double radius);
+
+/// A model matte made solid: the logistic never quite reaches 1 inside a subject
+/// (~0.9 across a dark shirt) and text Behind it ghosts through. A smoothstep over
+/// 0.1…0.9 makes the sure inside and outside solid and keeps the edge's own ramp.
+void solidify(std::vector<float>& alpha);
 
 /// What a subtract takes away: the segmentation made firm (its soft fringe counts as
 /// inside) and grown by `growPx` — taking a thing away must not leave its outline behind.

@@ -49,6 +49,10 @@ struct DeepFxTexture {
 [[nodiscard]] bool reads_own_object_matte(const RLayer& l);
 /// An effect's Apply to (Compositing Options, `subjectScope`): 0 the whole layer, 1 inside its subject, 2 outside it (effects_port.cpp).
 [[nodiscard]] int subject_scope_of(const Json& e);
+/// Background fill: the subject's area painted with the background colour around it
+/// (normalized convolution through its Object Matte frame), put before a blur Applied To
+/// the Background so no subject colour bleeds into it. `l.objectMatteSrc` must be set.
+[[nodiscard]] api::RenderEffect subject_fill_entry(const RLayer& l);
 /// The texture key the layer's Object Matte frame is fed under.
 [[nodiscard]] std::string object_matte_key(std::string_view layerId);
 /// A map layer id `<layer>#subject`: that layer's subject matte frame (object_matte_key) drawn

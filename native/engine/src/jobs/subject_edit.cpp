@@ -140,15 +140,17 @@ std::size_t choose_candidate(std::span<const float> iouScores, std::span<const f
   if (intent.loneClick || intent.subtract) {
     // Among the candidates that hold every prompt and that SAM itself rates
     // near its best: a click means the whole object (the largest that is not
-    // half the frame and not the background behind it — along two or more of
-    // the frame's edges), a subtract the smallest thing under it. SAM rates a
+    // the background behind it — along three or more of the frame's edges, or
+    // over 30 % of it: a wall, the floor; an object the frame cuts on two
+    // sides, a bench in a corner, is still an object), a subtract the smallest
+    // thing under it. SAM rates a
     // shirt above the person wearing it (0.97 vs 0.84 on a skater), so the
     // margin is wide.
     std::optional<std::size_t> pick;
     for (std::size_t k = 0; k < n; ++k) {
       if (c[k].fgCover < c[best].fgCover - 1e-9 || c[k].bgHit > c[best].bgHit + 1e-9) continue;
       if (c[k].iou < bestIou - (intent.subtract ? 0.15 : 0.25)) continue;
-      if (intent.loneClick && (c[k].area > 0.5 || c[k].edges > 1)) continue;
+      if (intent.loneClick && (c[k].area > 0.3 || c[k].edges > 2)) continue;
       if (!pick || (intent.subtract ? c[k].area < c[*pick].area : c[k].area > c[*pick].area)) pick = k;
     }
     if (pick) best = *pick;
@@ -191,7 +193,7 @@ std::vector<Proposal> select_proposals(std::span<const float> iouScores, std::sp
     const std::array<sam::Point, 1> click{sam::Point{points[b].x, points[b].y, 1}};
     const std::size_t k = choose_candidate(iou, lg, click, scale, lone, width, height);
     const CandidateScore q = score_candidates(iou, lg, click, scale, width, height)[k];
-    if (q.fgCover < 1 || q.iou < 0.7 || q.area < 0.002 || q.area > 0.3 || q.edges > 1) continue;
+    if (q.fgCover < 1 || q.iou < 0.7 || q.area < 0.002 || q.area > 0.3 || q.edges > 2) continue;
     Found f;
     f.p = {b, k, q.iou, q.area};
     f.on.assign(fw * fh, 0);
@@ -488,6 +490,13 @@ std::vector<float> refine_band(std::span<const std::uint8_t> rgba, int width, in
       out[g] = base[g] + (a - base[g]) * band[g];
     }
   return out;
+}
+
+void solidify(std::vector<float>& alpha) {
+  for (float& v : alpha) {
+    const float x = std::clamp((v - 0.1f) / 0.8f, 0.0f, 1.0f);
+    v = x * x * (3.0f - 2.0f * x);
+  }
 }
 
 void harden_for_subtract(std::vector<float>& delta, int width, int height, int growPx) {

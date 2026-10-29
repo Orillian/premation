@@ -1328,6 +1328,7 @@ add_library(engine_jobs_core STATIC
   src/jobs/face_mesh.cpp
   src/jobs/matte_refine.cpp
   src/jobs/subject_edit.cpp
+  src/jobs/vitmatte_prep.cpp
   src/jobs/stabilize.cpp
   src/jobs/track_apply.cpp
   src/jobs/track_plans.cpp
@@ -1383,6 +1384,7 @@ if(FFMPEG_FOUND AND TARGET engine_audio)
     src/jobs/face_ort_ffi.cpp
     src/jobs/kind_depth_estimate.cpp
     src/jobs/depth_ort_ffi.cpp
+    src/jobs/vitmatte_ort_ffi.cpp
   )
   target_include_directories(engine_jobs SYSTEM PRIVATE ${FFMPEG_INCLUDE_DIRS})
   target_link_directories(engine_jobs PUBLIC ${FFMPEG_LIBRARY_DIRS})

@@ -1254,6 +1254,9 @@ std::vector<api::RenderEffect> extract_gpu_route_effects(const RLayer& l) {
     if (!effect_enabled(e)) continue;
     const std::size_t at = out.size();
     const std::string t = type_of(e);
+    // A blur Applied To the Background spreads from a picture with the subject painted out
+    // (in its blend span, so the subject itself is still the input's where the blend keeps it).
+    if (subject_scope_of(e) == 2 && l.objectMatteSrc && t.find("blur") != std::string::npos) out.push_back(subject_fill_entry(l));
     if (t == "write-on") {
       if (const auto stamp = stamp_for_effect(l, e)) {
         out.push_back(FxWriter("stamp-field")

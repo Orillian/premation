@@ -1729,6 +1729,17 @@ bool spatial_x_handles(std::string_view type) { return std::ranges::find(kHandle
 
 bool deep_effect_follows_clock(std::string_view type) { return std::ranges::find(kClock, type) != kClock.end(); }
 
+api::RenderEffect subject_fill_entry(const RLayer& l) {
+  const Box b{std::max(1.0, l.width > 0 ? l.width : 1.0), std::max(1.0, l.height > 0 ? l.height : 1.0)};
+  Graph g("subject-fill", b.lw, b.lh);
+  g.mask(0, object_matte_key(l.id));
+  g.pass("fxx-sfill-pre", fxg::X0, {fxg::IN, fxg::MASK0, -1, -1}, Rows());
+  // Wide enough to reach the background across a person's width (3 % of the layer's long side).
+  g.blur(fxg::X1, fxg::X0, std::max(b.lw, b.lh) * 0.03, fxg::X2);
+  g.pass("fxx-sfill-post", fxg::A, {fxg::IN, fxg::X1, fxg::MASK0, -1}, Rows());
+  return g.done(fxg::A, 0.0);
+}
+
 bool spatial_x(const Json& e, const Json& params, const RLayer& layer, Out& out) {
   const Json& ty = e.at("type");
   if (!ty.is_string()) return false;

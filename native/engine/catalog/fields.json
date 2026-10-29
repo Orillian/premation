@@ -1328,6 +1328,26 @@
       }
     },
     {
+      "path": "layer/behindSubjectSoftness",
+      "key": "behindSubjectSoftness",
+      "label": "Behind Subject Softness",
+      "type": "scalar",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "clearAtDefault": true,
+      "store": {
+        "fx": "behindSubjectSoftness"
+      },
+      "when": {
+        "notKinds": [
+          "camera",
+          "light",
+          "audio"
+        ]
+      }
+    },
+    {
       "path": "layer/sequenceLoop",
       "key": "loop",
       "label": "Loop Sequence",

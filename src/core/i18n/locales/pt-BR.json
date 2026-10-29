@@ -10112,5 +10112,14 @@
   "export.form.av1Note": "AV1 (SVT-AV1, 10 bits): os menores arquivos, para a web e players modernos. O mais lento para codificar.",
   "export.form.dnxhrProfile": "Perfil DNxHR",
   "export.form.dnxhr10Note": "10 bits, para finalização e correção de cor. Sem canal alfa.",
-  "export.form.dnxhr8Note": "8 bits 4:2:2, o intermediário de edição do Avid. Sem canal alfa."
+  "export.form.dnxhr8Note": "8 bits 4:2:2, o intermediário de edição do Avid. Sem canal alfa.",
+  "models.job.vitmatteDownloading": "Baixando o modelo de recorte do Refinar borda…",
+  "models.job.vitmatteDone": "Modelo de recorte do Refinar borda instalado",
+  "settings.vitmatte.offer": "Bordas de cabelo e pelos mais limpas com recorte aprendido",
+  "settings.vitmatte.offerDetail": "Um download único de 28 MB. Até lá, o Refinar borda usa as cores de cada lado da borda.",
+  "settings.vitmatte.download": "Baixar",
+  "workspace.subjects.frozenMessage": "O objeto está congelado. Descongele-o (Propriedades ▸ Objeto, ou Congelar na barra de opções) para alterá-lo.",
+  "workspace.rotoBrush.frozenMessage": "O Pincel Roto está congelado nesta camada. Descongele-o para alterar o fosco.",
+  "workspace.textBehind.softEdge": "Borda suave",
+  "workspace.textBehind.softEdgeLabel": "Borda suave onde se sobrepõem"
 }

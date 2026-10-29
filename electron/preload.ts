@@ -200,6 +200,18 @@ const bridge = {
       return () => ipcRenderer.removeListener('sam2Model:downloadProgress', listener);
     },
   },
+  // Refine Edge's learned matting model (models.json `vitmatte`, electron/modelInstaller.ts): a PINNED download on first use.
+  vitmatteModel: {
+    status: () => ipcRenderer.invoke('vitmatteModel:status'),
+    install: (request: { requestId: string }) => ipcRenderer.invoke('vitmatteModel:install', request),
+    remove: () => ipcRenderer.invoke('vitmatteModel:remove'),
+    cancelDownload: (requestId: string) => ipcRenderer.invoke('objectMatte:cancelDownload', requestId),
+    onDownloadProgress: (handler: (event: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown): void => handler(payload);
+      ipcRenderer.on('vitmatteModel:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('vitmatteModel:downloadProgress', listener);
+    },
+  },
   // Export's ffmpeg: health, one-click repair, "choose file" (electron/ffmpegService.ts).
   ffmpeg: {
     status: (force?: boolean) => ipcRenderer.invoke('ffmpeg:status', force === true),

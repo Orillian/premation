@@ -9,6 +9,7 @@
 
 #include "jobs/sam_pipeline.hpp"
 #include "jobs/subject_edit.hpp"
+#include "jobs/vitmatte.hpp"
 
 namespace se = premation::jobs::subject;
 namespace sam = premation::jobs::sam;
@@ -23,6 +24,23 @@ void rect(std::vector<float>& logits, std::size_t k, int x0, int y0, int x1, int
       logits[k * kPlane + static_cast<std::size_t>(y) * 256 + static_cast<std::size_t>(x)] = x >= x0 && x < x1 && y >= y0 && y < y1 ? 8.0f : -8.0f;
 }
 }  // namespace
+
+TEST_CASE("ViTMatte's input: normalised RGB, the trimap as is, zero-padded to 32", "[jobs][subject]") {
+  const std::vector<std::uint8_t> rgba{255, 0, 128, 255, 0, 255, 0, 255};  // 2×1
+  const std::vector<float> tri{1.0f, 0.5f};
+  int pw = 0;
+  int ph = 0;
+  const std::vector<float> in = premation::jobs::vitmatte::prepare_input(rgba, tri, 2, 1, pw, ph);
+  REQUIRE(pw == 32);
+  REQUIRE(ph == 32);
+  const std::size_t plane = 32 * 32;
+  REQUIRE(in.size() == plane * 4);
+  CHECK(in[0] == 1.0f);              // the first pixel's R, (1 − 0.5) / 0.5
+  CHECK(in[plane] == -1.0f);         // its G
+  CHECK(in[plane * 3] == 1.0f);      // its trimap
+  CHECK(in[plane * 3 + 1] == 0.5f);  // the second pixel's trimap
+  CHECK(in[plane * 3 + 2] == 0.0f);  // padding
+}
 
 TEST_CASE("a stroke becomes a few prompts spread along it, ends included", "[jobs][subject]") {
   std::vector<se::Pt> s;
@@ -63,6 +81,19 @@ TEST_CASE("a click picks the whole person over the shirt SAM rates higher", "[jo
   rect(logits, 2, 110, 100, 140, 140); // the shirt
   const std::vector<float> iou{0.84f, 0.843f, 0.974f};
   const std::vector<sam::Point> click{{500, 480, 1}};
+  se::Intent lone;
+  lone.loneClick = true;
+  CHECK(se::choose_candidate(iou, logits, click, 1.0, lone, 1024, 1024) == 1);
+}
+
+TEST_CASE("an object in a corner of the frame is still an object", "[jobs][subject]") {
+  // A bench the frame cuts at its bottom and right: one plank, the bench, the bench + floor.
+  std::vector<float> logits(3 * kPlane);
+  rect(logits, 0, 200, 200, 220, 256);  // a plank
+  rect(logits, 1, 160, 180, 256, 256);  // the bench: bottom and right edges
+  rect(logits, 2, 0, 150, 256, 256);    // the floor too: bottom, left, right
+  const std::vector<float> iou{0.95f, 0.85f, 0.88f};
+  const std::vector<sam::Point> click{{840, 900, 1}};
   se::Intent lone;
   lone.loneClick = true;
   CHECK(se::choose_candidate(iou, logits, click, 1.0, lone, 1024, 1024) == 1);
@@ -117,6 +148,16 @@ TEST_CASE("a subtract takes the soft fringe too, so no outline is left behind", 
   for (int x = 8; x <= 21; ++x) CHECK(out[static_cast<std::size_t>(x)] == 0.0f);
   CHECK(out[2] == 1.0f);
   CHECK(out[27] == 1.0f);
+}
+
+TEST_CASE("a model matte is made solid inside, its edge ramp kept", "[jobs][subject]") {
+  std::vector<float> a{0.02f, 0.08f, 0.5f, 0.88f, 0.93f};
+  se::solidify(a);
+  CHECK(a[0] == 0.0f);
+  CHECK(a[1] == 0.0f);
+  CHECK(std::abs(a[2] - 0.5f) < 1e-6f);
+  CHECK(a[3] > 0.99f);  // a dark shirt's 0.88 is the subject, not 12 % see-through
+  CHECK(a[4] == 1.0f);
 }
 
 TEST_CASE("add, subtract and replace edit the frame's matte", "[jobs][subject]") {

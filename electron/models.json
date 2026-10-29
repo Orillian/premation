@@ -134,6 +134,24 @@
           "bytes": 134335567
         }
       ]
+    },
+    {
+      "id": "vitmatte",
+      "ipc": "vitmatteModel",
+      "env": "VITMATTE",
+      "name": "Refine Edge matting (ViTMatte small)",
+      "description": "Learned alpha matting for Refine Edge: hair, fur and soft edges worked out from the picture inside the brushed band (native/engine/src/jobs/vitmatte_ort_ffi.cpp, on the CPU). Downloaded on demand from a pinned Hugging Face revision of the Xenova ONNX export (int8); the checksum is verified. Without it, Refine Edge estimates the edge from the colours either side.",
+      "licence": "MIT",
+      "bundled": false,
+      "source": "pinned",
+      "files": [
+        {
+          "name": "model_quantized.onnx",
+          "url": "https://huggingface.co/Xenova/vitmatte-small-composition-1k/resolve/6bc1297f6140f055a227b6d2cfe8c093281f35d2/onnx/model_quantized.onnx",
+          "sha256": "8216103d998864e122333e17d7d346feb1d6558d96bf08695a9838dba4f114e0",
+          "bytes": 27499369
+        }
+      ]
     }
   ]
 }

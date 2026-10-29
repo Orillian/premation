@@ -911,7 +911,12 @@ api::Renderable Flattener::layer_to_renderable(const RLayer& l, const Mat3& pare
   if (l.behindSubject) {
     // Behind Subject: last on the chain, the layer is cut by the inverse of that layer's subject
     // (Set Matte from its matte frame, drawn through its placement — composition_pass map_layer).
-    r.effects.push_back(FxWriter("set-matte").flag("useLuminance", false).flag("invert", true).text("matteLayerId", *l.behindSubject + std::string(kSubjectMapSuffix)).done());
+    r.effects.push_back(FxWriter("set-matte")
+                            .flag("useLuminance", false)
+                            .flag("invert", true)
+                            .num("featherPx", l.behindSubjectSoftness)
+                            .text("matteLayerId", *l.behindSubject + std::string(kSubjectMapSuffix))
+                            .done());
   }
   if (l.deformedMesh) r.deformed_mesh = deformed_mesh_wire(*l.deformedMesh, l.width, l.height, pad);
   // Shape / text bakes run on their raster, footage bakes on the decoded frame

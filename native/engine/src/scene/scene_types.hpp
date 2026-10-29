@@ -235,6 +235,8 @@ struct RLayer {
   /// layer is hidden behind — it shows only outside that layer's subject matte.
   /// Cleared when that layer has no subject at this time.
   std::optional<std::string> behindSubject;
+  /// Behind Subject's softness (layer/behindSubjectSoftness, px): the subject's edge feathered where it covers this layer.
+  double behindSubjectSoftness = 0;
   std::optional<std::array<double, 4>> uvRect;
   bool premultipliedSource = false;
   /// Interpret Footage ▸ Remove Pulldown (buildSnapshot `pulldownSource`): the

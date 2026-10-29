@@ -29,6 +29,7 @@ import type { RotoBox, RotoStroke } from '@stores/rotoBrushStore';
 import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
 import { objectMatteBake } from './objectMatteEffect';
+import { t } from '@core/i18n';
 
 /** The name every path this tool writes carries, so a re-segment replaces it. */
 export const ROTO_PATH_NAME = 'Roto Brush';
@@ -44,7 +45,12 @@ export const ROTO_PATH_NAME = 'Roto Brush';
  */
 export const ROTO_FROZEN_NAME = 'Roto Brush (Frozen)';
 
-const FROZEN_MESSAGE = 'Roto Brush is frozen on this layer. Unfreeze it to change the matte.';
+/** Why an edit is refused on a frozen layer: the subject, or the classic Roto Brush matte. */
+function frozenMessage(nodeId: string): string {
+  return rotoMattes(nodeId).subjectFrozen.length > 0
+    ? t('workspace.subjects.frozenMessage', 'The subject is frozen. Unfreeze it (Properties ▸ Subject, or Freeze on the options bar) to change it.')
+    : t('workspace.rotoBrush.frozenMessage', 'Roto Brush is frozen on this layer. Unfreeze it to change the matte.');
+}
 
 /** The name of a subject's outline (the "Object Matte" mask the subject edits and Follow write). */
 export const SUBJECT_OUTLINE_NAME = 'Object Matte';
@@ -274,7 +280,7 @@ export async function segmentStrokesToMask(
   timeSec: number,
   opts: SegmentStrokesOptions = {},
 ): Promise<string | null> {
-  if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
+  if (isRotoFrozen(nodeId)) throw new Error(frozenMessage(nodeId));
   if (!opts.box && !strokes.some((s) => s.kind === 'fg' && s.points.length > 0)) return null;
   const spec = await singleFrameSpec(nodeId, strokes, timeSec, opts);
   if (!spec) return null;
@@ -397,7 +403,7 @@ export interface SubjectEditResult {
  * To and text through Behind Subject. Null when there was nothing to edit.
  */
 export async function runSubjectEdit(nodeId: string, timeSec: number, req: SubjectEditRequest): Promise<SubjectEditResult | null> {
-  if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
+  if (isRotoFrozen(nodeId)) throw new Error(frozenMessage(nodeId));
   const size = await layerSize(nodeId);
   if (!size) return null;
   const toPx = (p: { x: number; y: number }) => ({ x: p.x + size.width / 2, y: p.y + size.height / 2 });
@@ -442,7 +448,7 @@ export async function propagateRotoForward(
   featherPx: number,
   onProgress?: (f: number) => boolean | void,
 ): Promise<RotoBrushResult> {
-  if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
+  if (isRotoFrozen(nodeId)) throw new Error(frozenMessage(nodeId));
   const size = await layerSize(nodeId);
   if (!size) throw new Error('Layer has no sized video source.');
   const prompts = strokesToPrompts(strokes, size);
@@ -507,7 +513,7 @@ export async function propagateObjectMatte(
   },
   onProgress?: (f: number) => boolean | void,
 ): Promise<RotoBrushResult> {
-  if (isRotoFrozen(nodeId)) throw new Error(FROZEN_MESSAGE);
+  if (isRotoFrozen(nodeId)) throw new Error(frozenMessage(nodeId));
   const size = await layerSize(nodeId);
   if (!size) throw new Error('Layer has no sized video source.');
   const here = strokesToPrompts(strokesAt(strokes, opts.origin, opts.fps), size);

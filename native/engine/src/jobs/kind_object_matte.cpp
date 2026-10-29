@@ -77,6 +77,7 @@
 #include "sam_embed_cache.hpp"
 #include "fxstate.hpp"
 #include "subject_edit.hpp"
+#include "vitmatte.hpp"
 #include "timeline.hpp"
 #include "values.hpp"
 #if defined(PREMATION_JOBS_HAVE_SCENE)
@@ -414,6 +415,87 @@ std::vector<float> stored_matte(const std::string& file, int w, int h) {
 #endif
 }
 
+/// ViTMatte, loaded once per process and kept while the file is the same (the worker answers every stroke).
+vitmatte::Model* resident_vitmatte(const std::string& path, std::string& error) {
+  static std::unique_ptr<vitmatte::Model> model;  // process-wide on purpose: the worker's warm state
+  static std::string loaded;
+  const std::string key = path + "\n" + file_stamp(path);
+  if (!model || loaded != key) {
+    model = vitmatte::load(path, error);
+    loaded = model ? key : std::string();
+  }
+  return model.get();
+}
+
+/// Refine Edge with the learned matte: a trimap (sure subject = the matte, sure background =
+/// outside it, unknown = the brush band) on the band's crop — at most 768 px on its long side —
+/// through ViTMatte, blended into `base` by the band. Empty when the model failed (the
+/// colour-based refine then runs).
+std::vector<float> refine_band_learned(vitmatte::Model& model, const RgbaImage& img, std::span<const float> base, std::span<const float> band,
+                                       std::string& error) {
+  const int w = static_cast<int>(img.width);
+  const int h = static_cast<int>(img.height);
+  int bx0 = w;
+  int by0 = h;
+  int bx1 = -1;
+  int by1 = -1;
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x)
+      if (band[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)] > 0.0f) {
+        bx0 = std::min(bx0, x);
+        bx1 = std::max(bx1, x);
+        by0 = std::min(by0, y);
+        by1 = std::max(by1, y);
+      }
+  if (bx1 < 0) return {};
+  // The band and a margin of sure pixels around it: the model reads the colours either side.
+  const int margin = std::max(24, (bx1 - bx0 + by1 - by0) / 8);
+  const int cx0 = std::max(0, bx0 - margin);
+  const int cy0 = std::max(0, by0 - margin);
+  const int cw = std::min(w - 1, bx1 + margin) - cx0 + 1;
+  const int ch = std::min(h - 1, by1 + margin) - cy0 + 1;
+  const double k = std::min(1.0, 768.0 / std::max(cw, ch));
+  const int sw = std::max(1, static_cast<int>(std::lround(cw * k)));
+  const int sh = std::max(1, static_cast<int>(std::lround(ch * k)));
+  std::vector<std::uint8_t> rgba(static_cast<std::size_t>(sw) * static_cast<std::size_t>(sh) * 4);
+  std::vector<float> tri(static_cast<std::size_t>(sw) * static_cast<std::size_t>(sh));
+  for (int y = 0; y < sh; ++y)
+    for (int x = 0; x < sw; ++x) {
+      const int gx = std::min(w - 1, cx0 + static_cast<int>((x + 0.5) / k));
+      const int gy = std::min(h - 1, cy0 + static_cast<int>((y + 0.5) / k));
+      const std::size_t g = static_cast<std::size_t>(gy) * static_cast<std::size_t>(w) + static_cast<std::size_t>(gx);
+      const std::size_t l = static_cast<std::size_t>(y) * static_cast<std::size_t>(sw) + static_cast<std::size_t>(x);
+      for (std::size_t c = 0; c < 4; ++c) rgba[l * 4 + c] = img.rgba[g * 4 + c];
+      tri[l] = band[g] >= 0.5f ? 0.5f : base[g] >= 0.5f ? 1.0f : 0.0f;
+    }
+  int pw = 0;
+  int ph = 0;
+  const std::vector<float> input = vitmatte::prepare_input(rgba, tri, sw, sh, pw, ph);
+  std::vector<float> alpha;
+  if (!model.run(input, pw, ph, alpha, error)) return {};
+  std::vector<float> out(base.begin(), base.end());
+  const auto at = [&](int xx, int yy) {
+    return static_cast<double>(alpha[static_cast<std::size_t>(yy) * static_cast<std::size_t>(pw) + static_cast<std::size_t>(xx)]);
+  };
+  for (int y = cy0; y < cy0 + ch; ++y)
+    for (int x = cx0; x < cx0 + cw; ++x) {
+      const std::size_t g = static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x);
+      if (band[g] <= 0.0f) continue;
+      // Bilinear from the scaled crop.
+      const double sx = std::clamp((x - cx0 + 0.5) * k - 0.5, 0.0, static_cast<double>(sw - 1));
+      const double sy = std::clamp((y - cy0 + 0.5) * k - 0.5, 0.0, static_cast<double>(sh - 1));
+      const int x0 = static_cast<int>(sx);
+      const int y0 = static_cast<int>(sy);
+      const int x1 = std::min(sw - 1, x0 + 1);
+      const int y1 = std::min(sh - 1, y0 + 1);
+      const double fx = sx - x0;
+      const double fy = sy - y0;
+      const double a = (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+      out[g] = base[g] + (static_cast<float>(std::clamp(a, 0.0, 1.0)) - base[g]) * band[g];
+    }
+  return out;
+}
+
 /// A subject edit's tail: the frame's matte edited (segment / paint / refine × replace / add /
 /// subtract), stored as the cut-out PNG (a new file each time: undo still names the old one),
 /// and its outline. `delta` is the segmentation (the segment tool), else unused.
@@ -431,9 +513,22 @@ std::string subject_edit_finish(const Json& in, const Json& edit, const RgbaImag
   const subject::Op op = opName == "add" ? subject::Op::add : opName == "subtract" ? subject::Op::subtract : subject::Op::replace;
   const double radius = std::max(0.5, num_or(edit, "radius", 10) * (kx + ky) / 2);
   std::vector<float> alpha;
+  std::string matter;  // which refine ran (the summary says)
   if (tool == "refine") {
     if (strokes.empty()) fail(ErrorCode::invalid_argument, "Refine Edge: paint along the edge.");
-    alpha = subject::refine_band(img.rgba, w, h, base, subject::paint(w, h, strokes, radius), radius);
+    const std::vector<float> band = subject::paint(w, h, strokes, radius);
+    // The learned matte when ViTMatte is installed; the colour-based refine otherwise (or when it fails).
+    if (edit.at("vitmatte").is_string()) {
+      std::string error;
+      if (vitmatte::Model* m = resident_vitmatte(edit.at("vitmatte").str(), error); m != nullptr) {
+        alpha = refine_band_learned(*m, img, base, band, error);
+        if (!alpha.empty()) matter = "vitmatte";
+      }
+    }
+    if (alpha.empty()) {
+      alpha = subject::refine_band(img.rgba, w, h, base, band, radius);
+      matter = "colour";
+    }
   } else {
     if (tool == "paint") {
       if (strokes.empty()) fail(ErrorCode::invalid_argument, "Selection Brush: paint over the subject.");
@@ -451,7 +546,11 @@ std::string subject_edit_finish(const Json& in, const Json& edit, const RgbaImag
   std::filesystem::create_directories(dir, ec);
   const auto tPng = Clock::now();
   std::vector<std::uint8_t> png;
-  if (!exporter::encode_png_rgba8(matte::cutout(img.rgba, alpha, w, h), img.width, img.height, png, 1)) fail(ErrorCode::io, "could not encode the matte");
+  // Edge colours cleaned as a propagation cleans them (the Object Matte card's default 50 %): the
+  // cut-out shown by Remove Background carries no wall colour in its soft edge.
+  std::vector<std::uint8_t> colours = img.rgba;
+  matte::decontaminate(colours, alpha, w, h, 0.5);
+  if (!exporter::encode_png_rgba8(matte::cutout(colours, alpha, w, h), img.width, img.height, png, 1)) fail(ErrorCode::io, "could not encode the matte");
   std::string frameName = std::to_string(static_cast<long long>(std::llround(num_or(edit, "compTime", 0) * num_or(edit, "compFps", 30))));
   if (frameName.size() < 6) frameName.insert(0, 6 - frameName.size(), '0');
   const auto stamp = static_cast<unsigned long long>(std::chrono::system_clock::now().time_since_epoch().count());
@@ -498,6 +597,7 @@ std::string subject_edit_finish(const Json& in, const Json& edit, const RgbaImag
   tj.set("encode", Json::number(timings.encode));
   tj.set("decode", Json::number(timings.decode));
   tj.set("edit", Json::number(editMs));
+  if (!matter.empty()) tj.set("refine", Json::string(matter));
   tj.set("png", Json::number(pngMs));
   tj.set("total", Json::number(ms_since(t0)));
   o.set("timings", std::move(tj));
@@ -757,7 +857,7 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
     // The low-res edge snapped onto the picture's own edges (a cell of the 256² logits is ~4 px of a 1080p frame).
     const int snap = std::clamp(static_cast<int>(std::lround(std::max(w, h) / 320.0)), 2, 12);
     soft = matte::guided_filter(soft, matte::luma(img.rgba, w, h), w, h, snap, 2e-3);
-    for (float& v : soft) v = std::clamp(v, 0.0f, 1.0f);
+    subject::solidify(soft);
     std::vector<subject::Pt> seeds;
     for (const sam::Point& p : points)
       if (p.label == 1) seeds.push_back({p.x, p.y});
@@ -1018,6 +1118,7 @@ Json store_matte_frame(const RgbaImage& img, const std::vector<float>& alpha, co
   const int h = static_cast<int>(img.height);
   auto t = Clock::now();
   std::vector<float> refined = alpha;
+  subject::solidify(refined);  // no text behind a followed subject ghosts through it either
   if (rf.edgeRadius > 0) refined = matte::guided_filter(refined, matte::luma(img.rgba, w, h), w, h, static_cast<int>(std::lround(rf.edgeRadius)), 1e-3);
   if (rf.motionBlur && flow != nullptr) refined = matte::motion_blur(refined, *flow, w, h, rf.shutterAngle);
   matte::choke_feather(refined, w, h, rf.choke, rf.feather);
@@ -1817,6 +1918,17 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     const std::u8string fu = folder.u8string();
     ej.set("folder", Json::string(std::string(fu.begin(), fu.end())));
     ej.set("compTime", Json::number(t));
+    // Refine Edge's learned matte (models.json `vitmatte`), when the user installed it.
+    if (e.tool == api::SubjectTool::refine) {
+      if (const std::optional<std::string> vd = os::env_var("PREMATION_VITMATTE_USER_DIR"); vd && !vd->empty()) {
+        std::error_code vec;
+        const std::filesystem::path vp = std::filesystem::path(std::u8string(vd->begin(), vd->end())) / vitmatte::kModelFile;
+        if (std::filesystem::is_regular_file(vp, vec)) {
+          const std::u8string u = vp.u8string();
+          ej.set("vitmatte", Json::string(std::string(u.begin(), u.end())));
+        }
+      }
+    }
     ej.set("compFps", Json::number(fl.compFps > 0 ? fl.compFps : 30));
     input.set("edit", std::move(ej));
     PreparedJob job;

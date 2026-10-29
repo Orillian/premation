@@ -10112,5 +10112,14 @@
   "export.form.av1Note": "AV1（SVT-AV1，10 位）：文件最小，适合网页和现代播放器。编码最慢。",
   "export.form.dnxhrProfile": "DNxHR 配置",
   "export.form.dnxhr10Note": "10 位，用于精修和调色。无 Alpha 通道。",
-  "export.form.dnxhr8Note": "8 位 4:2:2，Avid 剪辑中间格式。无 Alpha 通道。"
+  "export.form.dnxhr8Note": "8 位 4:2:2，Avid 剪辑中间格式。无 Alpha 通道。",
+  "models.job.vitmatteDownloading": "正在下载调整边缘抠像模型…",
+  "models.job.vitmatteDone": "调整边缘抠像模型已安装",
+  "settings.vitmatte.offer": "用学习型抠像获得更干净的头发和毛发边缘",
+  "settings.vitmatte.offerDetail": "一次性下载 28 MB。在此之前，调整边缘根据边缘两侧的颜色计算。",
+  "settings.vitmatte.download": "下载",
+  "workspace.subjects.frozenMessage": "主体已冻结。要更改它，请先解冻（属性 ▸ 主体，或选项栏上的“冻结”）。",
+  "workspace.rotoBrush.frozenMessage": "此图层上的 Roto 笔刷已冻结。解冻后才能更改遮罩。",
+  "workspace.textBehind.softEdge": "柔和边缘",
+  "workspace.textBehind.softEdgeLabel": "重叠处使用柔和边缘"
 }

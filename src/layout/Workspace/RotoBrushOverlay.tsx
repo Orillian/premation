@@ -47,6 +47,7 @@ import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
 import { useDisplayedCamera2D } from './useOverlayView';
 import { subjectBoundaryPath } from './subjectBoundary';
+import { offerRefineEdgeMatting } from '@layout/Settings/objectMatteJob';
 import styles from './RotoBrushOverlay.module.css';
 import { t } from '@core/i18n';
 
@@ -75,6 +76,11 @@ export function RotoBrushOverlay(): JSX.Element | null {
   // One overlay paints for the three brush tools of the Object Matte group.
   const active = activeTool === 'roto' || activeTool === 'selection-brush' || activeTool === 'refine-edge';
   const brushMode = activeTool === 'selection-brush' ? 'exact' : activeTool === 'refine-edge' ? 'refine' : 'snap';
+
+  // Refine Edge offers its learned matting model once a session (it works without it).
+  useEffect(() => {
+    if (active && brushMode === 'refine') offerRefineEdgeMatting();
+  }, [active, brushMode]);
 
   // Switching layer drops the strokes: they are in the OLD layer's local
   // pixels and mean nothing in the new one's.

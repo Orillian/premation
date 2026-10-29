@@ -59,6 +59,32 @@ export function installObjectMatteJob(): void {
   });
 }
 
+let vitmatteOffered = false;
+
+/**
+ * Refine Edge works out hair and fur from the colours either side until the
+ * learned matting model (models.json `vitmatte`, 28 MB, pinned) is installed;
+ * then the band goes through ViTMatte. Offered once a session, the first time
+ * the tool is picked, the download a job (tray chip + Tasks panel).
+ */
+export function offerRefineEdgeMatting(): void {
+  if (vitmatteOffered) return;
+  vitmatteOffered = true;
+  const bridge = typeof window !== 'undefined' ? window.motionEditor?.vitmatteModel : undefined;
+  if (!bridge) return;
+  void bridge.status().then((installed) => {
+    if (installed) return;
+    useUIStore.getState().notify({
+      level: 'info',
+      message: t('settings.vitmatte.offer', 'Cleaner hair and fur edges with learned matting'),
+      detail: t('settings.vitmatte.offerDetail', 'A one-time 28 MB download. Until then, Refine Edge works from the colours either side of the edge.'),
+      durationMs: 12000,
+      group: 'vitmatte-model',
+      action: { label: t('settings.vitmatte.download', 'Download'), onSelect: () => { void ensureModelInstalled('vitmatteModel'); } },
+    });
+  }).catch(() => undefined);
+}
+
 let sam2Offered = false;
 
 /**

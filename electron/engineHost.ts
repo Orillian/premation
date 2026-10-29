@@ -643,6 +643,8 @@ export interface EngineHostOptions {
   handUserDir?: string;
   /** The SAM 2.1 video model for Object Matte walks (<userData>/models/sam2-video; sam2Model.ts). */
   sam2UserDir?: string;
+  /** Refine Edge's learned matting model (<userData>/models/vitmatte; models.json `vitmatte`). */
+  vitmatteUserDir?: string;
   /** app.getPath('userData'): lets PREMATION_FFMPEG find the in-app repaired ffmpeg (ffmpegRepair.ts). */
   userDataPath?: string;
   log?(line: string): void;
@@ -795,6 +797,7 @@ export class EngineHost {
               // SAM 2.1 (models.json `sam2-video`, pinned, on demand): with all six files
               // there an objectMatte walk tracks with its memory instead of SlimSAM per frame.
               ...(o.sam2UserDir ? { PREMATION_SAM2_USER_DIR: o.sam2UserDir } : {}),
+              ...(o.vitmatteUserDir ? { PREMATION_VITMATTE_USER_DIR: o.vitmatteUserDir } : {}),
               // The bundled copies (models.json `bundled`: the SAM pair, the hand
               // models): <resources>/models/<id> packaged, dist/models/<id> in
               // development — PREMATION_SAM_DIR, PREMATION_HAND_DIR, …

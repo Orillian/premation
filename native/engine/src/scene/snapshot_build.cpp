@@ -1746,6 +1746,7 @@ void Walk::build_node(const doc::Node& n) {
   l.mask = std::move(mask);
   l.matte = read_matte_of(n);
   if (const Json& bs = n.fx().at("behindSubject"); bs.is_string() && !bs.str().empty()) l.behindSubject = bs.str();
+  if (const Json& soft = n.fx().at("behindSubjectSoftness"); soft.is_number() && std::isfinite(soft.num())) l.behindSubjectSoftness = std::clamp(soft.num(), 0.0, 100.0);
   l.isAdjustment = read_node_adjustment(n);
   l.draft = read_node_quality_s(n) == "draft";
   if (doc::read_node_paint(n)) {  // paint_port.cpp: the frame's live strokes

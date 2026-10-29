@@ -1814,7 +1814,9 @@ ChainResult run_effects_chain(PassContext& ctx, const std::vector<api::RenderEff
       if (matte) {
         Packer pk = ctx.packer();
         add(Mat::SET_MATTE_MATERIAL,
-            pk.mat3(mvp).rect(targetUv).vec4(fx.flag("useLuminance") ? 1 : 0, fx.flag("invert") ? 1 : 0, 0, 0).span(),
+            // featherPx (Behind Subject's softness): the matte read through a small disk, in the buffer's uv.
+            pk.mat3(mvp).rect(targetUv).vec4(fx.flag("useLuminance") ? 1 : 0, fx.flag("invert") ? 1 : 0, fx.num("featherPx") * kx / pw,
+                                             fx.num("featherPx") * ky / ph).span(),
             ctx.linear_clamp())
             .mask = matte;
       }

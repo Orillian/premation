@@ -16,7 +16,12 @@
  */
 
 import type { Command } from '@motion/engine-api';
+import { secondsToFlicks } from '@motion/engine-api';
 import { edit } from '@core/engine/uiEdits';
+import { MAIN_VIEWPORT, overlayLayer } from '@stores/overlayGeometry';
+import { layerToComp } from './layerScreen';
+import { maskPathPolyline } from '@core/effects/mask';
+import { mirrorMasksAt } from '@core/mirror/masks';
 import { paths } from '@core/engine/propRefs';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
 import { childOrderOf } from '@core/mirror/layerTree';
@@ -91,6 +96,40 @@ export interface PlaceBehindResult {
   subject: string;
   /** Whether the footage already had a subject (else the Object Matte tool is next). */
   hadMatte: boolean;
+}
+
+/**
+ * The subject's box in composition px at comp second `time`: its outline mask
+ * through the footage layer's own layer → comp matrix (the one the viewer's
+ * overlays draw with). Null when there is no subject or no matrix yet.
+ */
+export async function subjectBoundsInComp(
+  footage: string,
+  time: number,
+): Promise<{ x0: number; y0: number; x1: number; y1: number; frame: { x0: number; x1: number } } | null> {
+  const m = documentMirror();
+  await m.loadTrees([footage]);
+  const outline = mirrorMasksAt(m, footage, secondsToFlicks(time)).find((x) => x.name === 'Object Matte');
+  if (!outline) return null;
+  const flat = maskPathPolyline(outline, 2);
+  const record = overlayLayer(MAIN_VIEWPORT, footage, secondsToFlicks(time));
+  const h = layerToComp(record, false, (p) => ({ x: p.x, y: p.y }));
+  if (flat.length < 6 || !h) return null;
+  const toComp = (lx: number, ly: number) => {
+    const w = h[6]! * lx + h[7]! * ly + h[8]!;
+    return { x: (h[0]! * lx + h[1]! * ly + h[2]!) / w, y: (h[3]! * lx + h[4]! * ly + h[5]!) / w };
+  };
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    const p = toComp(flat[i]!, flat[i + 1]!);
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+  }
+  // The footage's own left / right edges in the comp (its box, layer-local).
+  const b = record?.box;
+  const frame = b && b.length >= 4
+    ? { x0: Math.min(toComp(b[0]!, b[1]!).x, toComp(b[0]! + b[2]!, b[1]!).x), x1: Math.max(toComp(b[0]!, b[1]!).x, toComp(b[0]! + b[2]!, b[1]!).x) }
+    : { x0: -Infinity, x1: Infinity };
+  return { x0, y0, x1, y1, frame };
 }
 
 /** The commands that put `plan.behind` behind the footage's subject (Behind Subject + directly above it). */
