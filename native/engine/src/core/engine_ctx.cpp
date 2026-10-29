@@ -320,6 +320,17 @@ Json FakePorts::import_file(const api::ImportFile& file, const std::string& id) 
   const std::string name = base_name(file.path);
   // A file named `undecodable…`: the decode failure the import tests need.
   if (name.find("undecodable") != std::string::npos) fail(api::ErrorCode::io, "cannot decode '" + name + "'");
+  // Data footage (.json / .csv / .tsv): the real file, as FilePorts records it — expressions read it.
+  if (ends_with_ci(name, ".json") || ends_with_ci(name, ".csv") || ends_with_ci(name, ".tsv")) {
+    Json d = Json::object();
+    d.set("id", Json::string(id));
+    d.set("name", Json::string(name));
+    d.set("type", Json::string("data"));
+    d.set("src", Json::string(local_file_url(file.path)));
+    d.set("size", Json::number(0));
+    d.set("path", Json::string(file.path));
+    return d;
+  }
   const bool audio = ends_with_ci(name, ".wav") || ends_with_ci(name, ".mp3") || ends_with_ci(name, ".aac");
   const bool image = ends_with_ci(name, ".png") || ends_with_ci(name, ".jpg") || ends_with_ci(name, ".jpeg");
   const bool model = ends_with_ci(name, ".glb");
@@ -589,6 +600,21 @@ Json FilePorts::record_for(const std::string& path, const std::string& name, con
     m.set("type", Json::string("model"));
     m.set("src", Json::string(local_file_url(path)));
     m.set("size", Json::number(static_cast<double>(msize)));
+    m.set("path", Json::string(path));
+    return m;
+  }
+  // AE's data footage: a .json / .csv / .tsv file is a `data` item, read by
+  // expressions (footage("name").sourceData / dataValue) — never probed or drawn.
+  if (any_suffix(name, {".json", ".csv", ".tsv"}) || mime == "application/json" || mime == "text/csv") {
+    std::error_code dec;
+    const auto dsize = std::filesystem::file_size(std::filesystem::path(std::u8string(path.begin(), path.end())), dec);
+    if (dec) fail(api::ErrorCode::io, "the data file could not be read");
+    Json m = Json::object();
+    m.set("id", Json::string(id));
+    m.set("name", Json::string(name));
+    m.set("type", Json::string("data"));
+    m.set("src", Json::string(local_file_url(path)));
+    m.set("size", Json::number(static_cast<double>(dsize)));
     m.set("path", Json::string(path));
     return m;
   }

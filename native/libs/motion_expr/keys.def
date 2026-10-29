@@ -46,7 +46,7 @@ K(unshift) K(forEach) K(toReversed)
 // thisComp / thisLayer / thisProperty / layer objects / key(n) / markers / rects
 K(width) K(height) K(duration) K(frameDuration) K(fps) K(numLayers) K(layer) K(marker)
 K(name) K(toComp) K(toWorld) K(fromComp) K(fromWorld) K(text) K(value) K(valueAtTime)
-K(velocity) K(speed) K(velocityAtTime) K(loopOut) K(loopIn) K(loopOutDuration) K(loopInDuration) K(index) K(time) K(top) K(left)
+K(velocity) K(speed) K(velocityAtTime) K(loopOut) K(loopIn) K(loopOutDuration) K(loopInDuration) K(footage) K(sourceData) K(dataValue) K(dataKeyCount) K(index) K(time) K(top) K(left)
 K(comment) K(numKeys) K(key) K(nearestKey) K(sourceText)
 
 // Source Text: text.sourceText and its style object (sourceText.ts)

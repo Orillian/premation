@@ -1265,6 +1265,9 @@ export const NATIVE_EXPRESSION_API: { insert: string; label: string; hint: strin
   { insert: 'effect("Slider Control")("Slider").valueAtTime(time - 0.5)', label: 'effect()', hint: 'an effect parameter: .value .valueAtTime(t) .velocity .numKeys .key(n)' },
   { insert: 'timeToTimecode(time)', label: 'timeToTimecode()', hint: 'seconds → "0:00:01:12"' },
   { insert: 'timeToCurrentFormat(time)', label: 'timeToCurrentFormat()', hint: 'seconds in the project’s time display' },
+  { insert: 'footage("data.json").sourceData', label: 'footage()', hint: 'a .json / .csv / .tsv item: .sourceData .dataValue([…]) .dataKeyCount([…]) .sourceText' },
+  { insert: "loopOutDuration('cycle', 1)", label: 'loopOutDuration()', hint: 'repeat the last seconds of keyframes' },
+  { insert: "loopInDuration('cycle', 1)", label: 'loopInDuration()', hint: 'repeat the first seconds of keyframes' },
 ];
 
 /** Everything the expression editor highlights, completes and lists. */

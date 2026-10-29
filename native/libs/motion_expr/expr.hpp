@@ -346,6 +346,13 @@ class Host {
                                                        double /*index*/) {
     return std::nullopt;
   }
+  /// AE's `footage("name")` on a DATA item (.json / .csv / .tsv): the item's
+  /// name and its file's text (UTF-8); nullopt = no such data footage.
+  struct FootageText {
+    std::u16string name;
+    std::string text;
+  };
+  virtual std::optional<FootageText> footage_text(std::u16string_view /*name*/) { return std::nullopt; }
 };
 
 /// One evaluation's inputs (`ExprContext`).

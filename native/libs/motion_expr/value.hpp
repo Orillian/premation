@@ -67,6 +67,8 @@ enum class Global : std::int8_t {
   kTimeToTimecode, kTimeToCurrentFormat,
   // AE: loop the last / first `duration` seconds (2026-10-29)
   kLoopOutDuration, kLoopInDuration,
+  // AE's data footage: footage("name").sourceData / dataValue (2026-10-29)
+  kFootage,
   kCount_
 };
 
@@ -90,6 +92,7 @@ enum class Fn : std::uint8_t {
   // comp("Name") and its layer(), and the methods of a layer / effect property object
   kDegreesToRadians, kRadiansToDegrees, kHslToRgb, kRgbToHsl, kSmooth, kTemporalWiggle, kComp, kCompByNameLayer,
   kTimeToTimecode, kTimeToCurrentFormat, kLoopOutDuration, kLoopInDuration,
+  kFootage, kFootageDataValue, kFootageDataKeyCount,
   kPropValueAtTime, kPropVelocityAtTime, kPropKey, kPropNearestKey, kPropSmooth,
   // sourceText.ts
   kGetStyleAt, kStyleSetter, kStyleSetText,
@@ -181,7 +184,9 @@ enum class Lazy : std::uint8_t {
   // parent / hasParent / enabled (Host::layer_facts_at)
   kLayerTransform, kLayerFact,
   // `thisComp.name` (Host::comp_facts)
-  kCompName
+  kCompName,
+  // footage("name").sourceData: parsed on first read (data.cpp)
+  kFootageSourceData
 };
 
 struct Prop {

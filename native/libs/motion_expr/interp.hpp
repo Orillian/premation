@@ -126,6 +126,12 @@ class Interp {
   Value space_fn(const Obj& f, Args a);
   Value key_fn(const Value& n);
   Value nearest_key(Args a);
+  // AE's data footage (data.cpp)
+  Value footage(const Value& name);
+  Value footage_table(Obj& f);
+  Value footage_source_data(Obj& f);
+  Value footage_data_value(Obj& f, const Value& path);
+  Value footage_data_key_count(Obj& f, const Value& path);
   /// loopOut / loopIn (limit = numKeyframes) and loopOutDuration / loopInDuration (limit = seconds).
   Value loop(bool out, const Value& mode, const Value& limit, bool by_duration);
   Value layer_at(const Value& name, const Value& prop, const Value& t);

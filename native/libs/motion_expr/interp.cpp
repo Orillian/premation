@@ -968,6 +968,13 @@ Value Interp::read_member(const Value& obj, const Value& key, KeyId kid) {
             if (ctx_.host != nullptr) f = ctx_.host->comp_facts(nullptr);
             return str(f ? f->name : Str(u"Comp 1"));
           }
+          case Lazy::kFootageSourceData: {
+            // Parsed on first read, then kept for the rest of this evaluation.
+            const Value v = footage_source_data(o);
+            p.value = v;
+            p.lazy = Lazy::kNone;
+            return v;
+          }
         }
       }
       break;
@@ -1052,6 +1059,8 @@ Value Interp::global(const Node& n) {
       return fn_value(Fn::kLoopOutDuration);
     case Global::kLoopInDuration:
       return fn_value(Fn::kLoopInDuration);
+    case Global::kFootage:
+      return fn_value(Fn::kFootage);
     case Global::kThisComp:
       return this_comp();
     case Global::kThisLayer:
@@ -1999,6 +2008,12 @@ Value Interp::call_api(const Obj& f, Args a) {
       return loop(true, a[0], a[1], true);
     case Fn::kLoopInDuration:
       return loop(false, a[0], a[1], true);
+    case Fn::kFootage:
+      return footage(a[0]);
+    case Fn::kFootageDataValue:
+      return footage_data_value(*f.bound.o, a[0]);
+    case Fn::kFootageDataKeyCount:
+      return footage_data_key_count(*f.bound.o, a[0]);
     case Fn::kSourceRectAtTime:
       return source_rect(a);
     case Fn::kToComp:

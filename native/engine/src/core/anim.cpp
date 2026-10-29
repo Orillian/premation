@@ -4,7 +4,11 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
+#include <mutex>
+#include <unordered_map>
 #include <limits>
 #include <set>
 #include <span>
@@ -598,6 +602,7 @@ class ContextHost final : public ex::Host {
   std::vector<double> effect_param_key_times(const std::u16string* layer, std::u16string_view effect,
                                              const std::u16string* param, double index) override;
   std::optional<ex::CompFacts> comp_facts(const std::u16string* name) override;
+  std::optional<ex::Host::FootageText> footage_text(std::u16string_view name) override;
   std::optional<std::u16string> comp_layer_ref(const std::u16string& comp, const std::u16string* name,
                                                double index) override;
 
@@ -950,6 +955,68 @@ std::vector<double> ContextHost::effect_param_key_times(const std::u16string* la
   }
   return out;
 }
+namespace {
+
+/// A data footage file's text, re-read only when its size or time changes:
+/// expressions ask on every evaluation of every frame. Shared across the
+/// evaluation threads; files past 64 MB are refused rather than held.
+std::optional<std::string> data_file_text(const std::string& path) {
+  struct Entry {
+    std::uintmax_t size = 0;
+    std::filesystem::file_time_type time{};
+    std::string text;
+  };
+  static std::mutex mutex;
+  static std::unordered_map<std::string, Entry> cache;
+  const std::filesystem::path p(std::u8string(path.begin(), path.end()));
+  std::error_code ec;
+  const std::uintmax_t size = std::filesystem::file_size(p, ec);
+  if (ec || size > (64ULL << 20)) return std::nullopt;
+  const auto time = std::filesystem::last_write_time(p, ec);
+  if (ec) return std::nullopt;
+  const std::scoped_lock lock(mutex);
+  if (const auto it = cache.find(path); it != cache.end() && it->second.size == size && it->second.time == time) {
+    return it->second.text;
+  }
+  std::ifstream in(p, std::ios::binary);
+  if (!in) return std::nullopt;
+  std::string text(static_cast<std::size_t>(size), '\0');
+  in.read(text.data(), static_cast<std::streamsize>(size));
+  text.resize(static_cast<std::size_t>(in.gcount()));
+  cache.insert_or_assign(path, Entry{size, time, text});
+  return text;
+}
+
+bool same_name(std::string_view a, std::string_view b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    const auto lo = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+    if (lo(a[i]) != lo(b[i])) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+std::optional<ex::Host::FootageText> ContextHost::footage_text(std::u16string_view name) {
+  // AE's footage("name"): the project item's name (its file name), exact first, then ignoring case.
+  const std::string want = ex::utf16_to_utf8(name);
+  const Json* hit = nullptr;
+  for (int pass = 0; pass < 2 && hit == nullptr; ++pass) {
+    for (const Json& a : s_.d_.items().assets) {
+      if (!(a.at("type").is_string() && a.at("type").str() == "data") || !a.at("name").is_string()) continue;
+      if (pass == 0 ? a.at("name").str() == want : same_name(a.at("name").str(), want)) {
+        hit = &a;
+        break;
+      }
+    }
+  }
+  if (hit == nullptr || !hit->at("path").is_string()) return std::nullopt;
+  auto text = data_file_text(hit->at("path").str());
+  if (!text) return std::nullopt;
+  return ex::Host::FootageText{ex::utf8_to_utf16(hit->at("name").str()), std::move(*text)};
+}
+
 std::optional<ex::CompFacts> ContextHost::comp_facts(const std::u16string* name) {
   if (name == nullptr) return s_.env_.comp_facts(node_, nullptr);
   const std::string n = ex::utf16_to_utf8(*name);

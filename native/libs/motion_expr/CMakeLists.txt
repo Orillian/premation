@@ -4,6 +4,7 @@
 # number formatting) and motion_eval (the ABI version/status symbols).
 
 add_library(motion_expr STATIC
+  data.cpp
   expr.cpp
   interp.cpp
   keys.cpp
