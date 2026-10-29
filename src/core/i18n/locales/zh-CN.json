@@ -10097,5 +10097,6 @@
   "effects.stack.applyToTitle": "此效果作用的位置：整个图层、仅所选主体，或主体以外的所有内容。",
   "workspace.refineEdge.working": "正在调整边缘…",
   "topNav.roto.selectionBrushPaintHint": "在笔刷经过处精确绘制选区；按住 Alt 涂抹可擦除。不贴合边缘。",
-  "topNav.roto.refineEdgeBandHint": "沿头发或毛发涂抹：笔刷下的边缘会逐缕变得柔和。"
+  "topNav.roto.refineEdgeBandHint": "沿头发或毛发涂抹：笔刷下的边缘会逐缕变得柔和。",
+  "workspace.objectMatte.finding": "正在查找对象…"
 }

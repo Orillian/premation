@@ -46,6 +46,7 @@ import { MAIN_VIEWPORT, overlayLayer } from '@stores/overlayGeometry';
 import { openLayerOnDoubleClick } from '@layout/LayerViewer/openLayer';
 import { useLayerScreenMapping } from './useLayerScreenMapping';
 import { useDisplayedCamera2D } from './useOverlayView';
+import { subjectBoundaryPath } from './subjectBoundary';
 import styles from './RotoBrushOverlay.module.css';
 import { t } from '@core/i18n';
 
@@ -269,6 +270,7 @@ export function RotoBrushOverlay(): JSX.Element | null {
       onPointerUp={(e) => finishStroke(e)}
     >
       <svg className={styles.svg} aria-hidden="true">
+        {nodeId && mapping && <path className={styles.boundary} d={subjectBoundaryPath(nodeId, time, mapping.localToScreen)} />}
         {all.map((s) => {
           const d = strokePath(s);
           if (!d) return null;

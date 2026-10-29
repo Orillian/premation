@@ -12072,6 +12072,7 @@ void encode(wire::Writer& w, const ObjectMatteJob& v) {
   if (v.output_folder.has_value()) { w.varint(5722U); w.str(*v.output_folder); }
   if (v.origin.has_value()) { w.varint(5728U); w.svarint(*v.origin); }
   if (v.edit.has_value()) { w.varint(5738U); { const std::size_t s = w.begin_ld(); encode(w, *v.edit); w.end_ld(s); } }
+  if (v.proposals.has_value()) { w.varint(5744U); w.boolean(*v.proposals); }
 }
 
 Status decode(wire::Reader& r, ObjectMatteJob& out) {
@@ -12181,6 +12182,12 @@ Status decode(wire::Reader& r, ObjectMatteJob& out) {
         SubjectEdit e;
         { wire::Reader sub; if (!r.ld(sub)) return Status::truncated; if (const Status st = decode(sub, e); st != Status::ok) return st; }
         out.edit = std::move(e);
+        break;
+      }
+      case 5744U: {
+        bool e = false;
+        if (!r.boolean(e)) return Status::truncated;
+        out.proposals = std::move(e);
         break;
       }
       default:

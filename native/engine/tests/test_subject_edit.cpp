@@ -176,3 +176,38 @@ TEST_CASE("Refine Edge judges an edge by the colours next to it, not the subject
   CHECK(a[10 * W + 36] > 0.9f);  // the head stays
   CHECK(a[10 * W + 44] < 0.1f);  // the wall stays out
 }
+
+TEST_CASE("Find Objects keeps each whole object once and never the background", "[jobs][subject]") {
+  // A 1024² frame (scale 1, a logit cell = 4 px): a person, a ball, and a wall around them.
+  const std::vector<se::Pt> grid = se::proposal_grid(1024, 1024, 8);
+  REQUIRE(grid.size() == 64);
+  const auto inRect = [](const se::Pt& p, int x0, int y0, int x1, int y1) { return p.x / 4 >= x0 && p.x / 4 < x1 && p.y / 4 >= y0 && p.y / 4 < y1; };
+  std::vector<float> iou(grid.size() * 3);
+  std::vector<float> logits(grid.size() * 3 * kPlane);
+  for (std::size_t b = 0; b < grid.size(); ++b) {
+    std::vector<float> one(3 * kPlane);
+    if (inRect(grid[b], 40, 40, 120, 240)) {          // the person: shirt, person, person + wall
+      rect(one, 0, 60, 60, 100, 120);
+      rect(one, 1, 40, 40, 120, 240);
+      rect(one, 2, 0, 0, 256, 240);
+      iou[b * 3] = 0.95f; iou[b * 3 + 1] = 0.86f; iou[b * 3 + 2] = 0.84f;
+    } else if (inRect(grid[b], 160, 160, 220, 220)) {  // the ball
+      rect(one, 0, 160, 160, 220, 220);
+      rect(one, 1, 160, 160, 220, 220);
+      rect(one, 2, 0, 140, 256, 256);
+      iou[b * 3] = 0.97f; iou[b * 3 + 1] = 0.96f; iou[b * 3 + 2] = 0.8f;
+    } else {                                           // the wall / floor: along the frame's edges
+      rect(one, 0, 0, 0, 256, 140);
+      rect(one, 1, 0, 140, 256, 256);
+      rect(one, 2, 0, 0, 256, 256);
+      iou[b * 3] = 0.9f; iou[b * 3 + 1] = 0.9f; iou[b * 3 + 2] = 0.9f;
+    }
+    std::copy(one.begin(), one.end(), logits.begin() + static_cast<std::ptrdiff_t>(b * 3 * kPlane));
+  }
+  const std::vector<se::Proposal> found = se::select_proposals(iou, logits, grid, 1.0, 1024, 1024, 24);
+  REQUIRE(found.size() == 2);
+  std::vector<double> areas{found[0].area, found[1].area};
+  std::ranges::sort(areas);
+  CHECK(std::abs(areas[0] - 60.0 * 60.0 / 65536.0) < 1e-6);   // the ball
+  CHECK(std::abs(areas[1] - 80.0 * 200.0 / 65536.0) < 1e-6);  // the whole person, not the shirt
+}

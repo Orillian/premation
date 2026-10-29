@@ -10097,5 +10097,6 @@
   "effects.stack.applyToTitle": "Onde este efeito atua: a camada inteira, só o objeto selecionado ou tudo exceto o objeto.",
   "workspace.refineEdge.working": "Refinando a borda…",
   "topNav.roto.selectionBrushPaintHint": "Pinta a seleção exatamente onde o pincel passa; Alt+pintar apaga. Sem encaixe nas bordas.",
-  "topNav.roto.refineEdgeBandHint": "Pinte ao longo de cabelo ou pelos: a borda sob o pincel fica suave, fio a fio."
+  "topNav.roto.refineEdgeBandHint": "Pinte ao longo de cabelo ou pelos: a borda sob o pincel fica suave, fio a fio.",
+  "workspace.objectMatte.finding": "Procurando objetos…"
 }

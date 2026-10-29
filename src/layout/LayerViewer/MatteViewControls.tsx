@@ -87,8 +87,8 @@ export function MatteViewControls({ nodeId, locked }: { nodeId: string; locked: 
   }, []);
 
   const mattes = rotoMattes(nodeId);
-  const frozen = mattes.frozen.length > 0;
-  const canFreeze = !locked && (frozen || mattes.live.length > 0);
+  const frozen = mattes.frozen.length > 0 || mattes.subjectFrozen.length > 0;
+  const canFreeze = !locked && (frozen || mattes.live.length > 0 || mattes.subject.length > 0);
 
   return (
     <span className={styles.matteViews} role="group" aria-label={t('layerViewer.matteViews.group', 'Matte views')}>

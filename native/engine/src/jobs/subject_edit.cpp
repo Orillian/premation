@@ -156,6 +156,82 @@ std::size_t choose_candidate(std::span<const float> iouScores, std::span<const f
   return best;
 }
 
+std::vector<Pt> proposal_grid(std::uint32_t width, std::uint32_t height, int alongLong) {
+  std::vector<Pt> out;
+  if (width == 0 || height == 0 || alongLong < 1) return out;
+  const double step = static_cast<double>(std::max(width, height)) / alongLong;
+  const auto nx = std::max(1, static_cast<int>(std::lround(width / step)));
+  const auto ny = std::max(1, static_cast<int>(std::lround(height / step)));
+  for (int y = 0; y < ny; ++y)
+    for (int x = 0; x < nx; ++x) out.push_back({(x + 0.5) * width / nx, (y + 0.5) * height / ny});
+  return out;
+}
+
+std::vector<Proposal> select_proposals(std::span<const float> iouScores, std::span<const float> logits, std::span<const Pt> points, double scale,
+                                       std::uint32_t width, std::uint32_t height, std::size_t maxObjects) {
+  constexpr std::size_t kCands = 3;
+  const std::size_t plane = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
+  const std::size_t n = std::min({points.size(), iouScores.size() / kCands, logits.size() / (kCands * plane)});
+  const auto cells = [&](std::uint32_t px) {
+    return std::clamp<std::size_t>(static_cast<std::size_t>(std::lround(px * scale / 4.0)), 1, sam::kMaskSize);
+  };
+  const std::size_t fw = cells(width);
+  const std::size_t fh = cells(height);
+  struct Found {
+    Proposal p;
+    std::vector<std::uint8_t> on;  // the frame's cells
+    std::size_t count = 0;
+  };
+  std::vector<Found> found;
+  Intent lone;
+  lone.loneClick = true;
+  for (std::size_t b = 0; b < n; ++b) {
+    const std::span<const float> iou = iouScores.subspan(b * kCands, kCands);
+    const std::span<const float> lg = logits.subspan(b * kCands * plane, kCands * plane);
+    const std::array<sam::Point, 1> click{sam::Point{points[b].x, points[b].y, 1}};
+    const std::size_t k = choose_candidate(iou, lg, click, scale, lone, width, height);
+    const CandidateScore q = score_candidates(iou, lg, click, scale, width, height)[k];
+    if (q.fgCover < 1 || q.iou < 0.7 || q.area < 0.002 || q.area > 0.3 || q.edges > 1) continue;
+    Found f;
+    f.p = {b, k, q.iou, q.area};
+    f.on.assign(fw * fh, 0);
+    for (std::size_t y = 0; y < fh; ++y)
+      for (std::size_t x = 0; x < fw; ++x)
+        if (lg[k * plane + y * sam::kMaskSize + x] > 0.0f) {
+          f.on[y * fw + x] = 1;
+          ++f.count;
+        }
+    if (f.count > 0) found.push_back(std::move(f));
+  }
+  // The surest first; among equals the larger.
+  std::ranges::stable_sort(found, [](const Found& a, const Found& b) { return a.p.iou != b.p.iou ? a.p.iou > b.p.iou : a.count > b.count; });
+  std::vector<Found> kept;
+  for (Found& f : found) {
+    bool drop = false;
+    for (Found& k : kept) {
+      std::size_t inter = 0;
+      for (std::size_t i = 0; i < f.on.size(); ++i) inter += f.on[i] & k.on[i];
+      const double uni = static_cast<double>(f.count + k.count - inter);
+      const double small = static_cast<double>(std::min(f.count, k.count));
+      if (uni > 0 && static_cast<double>(inter) / uni >= 0.6) {
+        drop = true;
+      } else if (small > 0 && static_cast<double>(inter) / small >= 0.85) {
+        // One holds the other: the whole object stays, its part goes.
+        if (f.count > k.count) k = std::move(f);
+        drop = true;
+      }
+      if (drop) break;
+    }
+    if (!drop) kept.push_back(std::move(f));
+  }
+  std::vector<Proposal> out;
+  for (const Found& k : kept) {
+    if (out.size() >= maxObjects) break;
+    out.push_back(k.p);
+  }
+  return out;
+}
+
 void keep_touching(std::vector<float>& alpha, int width, int height, std::span<const Pt> seeds, const std::optional<sam::Box>& box) {
   const std::size_t n = alpha.size();
   if (width <= 0 || height <= 0 || n != static_cast<std::size_t>(width) * static_cast<std::size_t>(height)) return;

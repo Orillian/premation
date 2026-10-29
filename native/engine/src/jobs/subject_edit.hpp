@@ -70,6 +70,26 @@ struct CandidateScore {
 [[nodiscard]] std::size_t choose_candidate(std::span<const float> iouScores, std::span<const float> logits, std::span<const sam::Point> prompts,
                                            double scale, Intent intent, std::uint32_t width, std::uint32_t height);
 
+/// Every object in a frame, found once so hovering is a lookup (Premiere's
+/// Object Mask lights all of them): one click per grid point, each answered by
+/// the candidate a click would select (choose_candidate, lone click), kept when
+/// it is a whole object — SAM rates it well, it is not the background (≤ one
+/// frame edge, ≤ 30 % of the frame: a wall or the floor) and not a speck — and not the same object as
+/// one already kept (IoU ≥ 0.6) nor a part of it (the larger one stays).
+struct Proposal {
+  std::size_t point = 0;      ///< which grid point found it (its click selects it again)
+  std::size_t candidate = 0;  ///< which of that point's three masks
+  double iou = 0;
+  double area = 0;            ///< share of the frame
+};
+
+/// Grid clicks over a width×height frame (frame px), about `alongLong` along its long side, half a step in from the edges.
+[[nodiscard]] std::vector<Pt> proposal_grid(std::uint32_t width, std::uint32_t height, int alongLong);
+
+/// `iouScores` [B·3], `logits` [B·3·256²] — the decoder's answers to the B grid clicks `points` (frame px).
+[[nodiscard]] std::vector<Proposal> select_proposals(std::span<const float> iouScores, std::span<const float> logits, std::span<const Pt> points,
+                                                    double scale, std::uint32_t width, std::uint32_t height, std::size_t maxObjects);
+
 /// Zero every region of `alpha` (connected above 0.5) that no seed (frame px) falls in
 /// and that does not lie mostly inside `box`; soft edges within 3 px of a kept region stay.
 void keep_touching(std::vector<float>& alpha, int width, int height, std::span<const Pt> seeds, const std::optional<sam::Box>& box);

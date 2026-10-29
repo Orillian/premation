@@ -79,3 +79,25 @@
     animation: none;
   }
 }
+
+/* Every object found in the frame (Premiere's Object Mask lights them all):
+   a quiet edge, so the picture stays readable; the one under the pointer
+   takes the full .preview look. */
+.object {
+  fill: var(--color-primary);
+  fill-opacity: 0.06;
+  stroke: var(--color-primary);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  stroke-linejoin: round;
+}
+
+/* The selected subject's boundary (subjectBoundary.ts): AE's magenta line. */
+.boundary {
+  fill: none;
+  stroke: var(--color-overlay-subject-boundary);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 1px var(--color-overlay-handle-halo));
+}

@@ -21,9 +21,10 @@
 
 import { secondsToFlicks } from '@motion/engine-api';
 import { engine } from '@core/engine/engineInstance';
-import { applyEngineJob, requireEngineJob, runEngineJob, startEngineJob } from '@core/engine/engineJobs';
+import { applyEngineJob, previewEngineJob, requireEngineJob, runEngineJob, startEngineJob } from '@core/engine/engineJobs';
 import { documentMirror } from '@stores/documentMirror';
 import { mirrorMaskHeaders } from '@core/mirror/effects';
+import { plainValue } from '@core/mirror/trackIndex';
 import type { RotoBox, RotoStroke } from '@stores/rotoBrushStore';
 import { edit } from '@core/engine/uiEdits';
 import { paths } from '@core/engine/propRefs';
@@ -45,18 +46,32 @@ export const ROTO_FROZEN_NAME = 'Roto Brush (Frozen)';
 
 const FROZEN_MESSAGE = 'Roto Brush is frozen on this layer. Unfreeze it to change the matte.';
 
-/** The layer's roto mattes by state (mask ids). */
-export function rotoMattes(nodeId: string): { live: string[]; frozen: string[] } {
-  const out = { live: [] as string[], frozen: [] as string[] };
-  for (const m of mirrorMaskHeaders(documentMirror().tree(nodeId))) {
+/** The name of a subject's outline (the "Object Matte" mask the subject edits and Follow write). */
+export const SUBJECT_OUTLINE_NAME = 'Object Matte';
+
+/**
+ * The layer's roto mattes by state (mask ids). `subject` / `subjectFrozen`:
+ * the subject's outline, frozen when it is locked — a subject's matte is the
+ * stored picture, not the mask, so Freeze locks the outline rather than
+ * renaming it (every edit and propagation refuses while it is locked).
+ */
+export function rotoMattes(nodeId: string): { live: string[]; frozen: string[]; subject: string[]; subjectFrozen: string[] } {
+  const out = { live: [] as string[], frozen: [] as string[], subject: [] as string[], subjectFrozen: [] as string[] };
+  const tree = documentMirror().tree(nodeId);
+  for (const m of mirrorMaskHeaders(tree)) {
     if (m.name === ROTO_PATH_NAME) out.live.push(m.id);
     else if (m.name === ROTO_FROZEN_NAME) out.frozen.push(m.id);
+    else if (m.name === SUBJECT_OUTLINE_NAME) {
+      const locked = plainValue(tree?.nodes.get(`masks/${m.id}/locked`)?.value) === true;
+      (locked ? out.subjectFrozen : out.subject).push(m.id);
+    }
   }
   return out;
 }
 
 export function isRotoFrozen(nodeId: string): boolean {
-  return rotoMattes(nodeId).frozen.length > 0;
+  const r = rotoMattes(nodeId);
+  return r.frozen.length > 0 || r.subjectFrozen.length > 0;
 }
 
 /**
@@ -72,9 +87,13 @@ export function rotoFreezeEdit(
   const mattes = rotoMattes(nodeId);
   const ids = frozen ? mattes.live : mattes.frozen;
   const name = frozen ? ROTO_FROZEN_NAME : ROTO_PATH_NAME;
+  const subject = frozen ? mattes.subject : mattes.subjectFrozen;
   return {
     label: frozen ? 'Freeze Roto Brush' : 'Unfreeze Roto Brush',
-    commands: ids.map((id) => ({ type: 'renamePropertyGroup' as const, group: { layer: nodeId, path: paths.maskGroup(id) }, name })),
+    commands: [
+      ...ids.map((id) => ({ type: 'renamePropertyGroup' as const, group: { layer: nodeId, path: paths.maskGroup(id) }, name })),
+      ...subject.map((id) => ({ type: 'setProperty' as const, prop: { layer: nodeId, path: `${paths.maskGroup(id)}/locked` }, value: { kind: 'bool' as const, value: frozen } })),
+    ],
   };
 }
 
@@ -265,6 +284,87 @@ export async function segmentStrokesToMask(
     return null;
   }
   return out.result?.mask ?? null;
+}
+
+/** One object the model found in a frame (Find Objects): layer-local px, centre origin. */
+export interface FoundObject {
+  /** Its outline, x y pairs. */
+  outline: number[];
+  /** Where a click selects it again (the grid click that found it). */
+  seed: { x: number; y: number };
+  /** Share of the frame, 0…1 (the smaller of two overlapping objects is the one under the pointer). */
+  area: number;
+  /** Its bounds, for a quick reject before the point-in-outline test. */
+  bounds: { x0: number; y0: number; x1: number; y1: number };
+}
+
+/** The frames searched, newest last: a frame is searched once (the engine also keeps its encoding). */
+const foundCache = new Map<string, FoundObject[]>();
+const FOUND_CACHE_SIZE = 12;
+
+/** The objects found in `nodeId`'s frame at `timeSec` when that search already ran, else undefined. */
+export function foundObjectsCached(nodeId: string, timeSec: number): FoundObject[] | undefined {
+  return foundCache.get(`${nodeId}@${timeSec}`);
+}
+
+/**
+ * Find Objects (Premiere's Object Mask hover): every object of the frame,
+ * found once by the model, so the Object Matte tool's hover is a lookup —
+ * all of them lit faintly, the one under the pointer strongly, at once.
+ * Nothing is written. Null when the engine could not search the frame.
+ */
+export async function findObjects(nodeId: string, timeSec: number): Promise<FoundObject[] | null> {
+  const key = `${nodeId}@${timeSec}`;
+  const hit = foundCache.get(key);
+  if (hit) return hit;
+  const out = await previewEngineJob<{ objects?: Array<{ outline: number[]; seed: [number, number]; area: number }> }>({
+    kind: 'objectMatte',
+    value: {
+      layer: nodeId,
+      range: { start: secondsToFlicks(timeSec), duration: secondsToFlicks(1 / 30) },
+      prompts: [],
+      backgroundPrompts: [],
+      encoderModel: '',
+      decoderModel: '',
+      replaceMasks: [],
+      strokes: [],
+      proposals: true,
+    },
+  });
+  if (!out || out.status !== 'done') {
+    if (out?.status === 'failed') throw new Error(out.error?.message ?? 'Object Matte failed');
+    return null;
+  }
+  const objects: FoundObject[] = (out.result?.objects ?? []).map((o) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i + 1 < o.outline.length; i += 2) {
+      x0 = Math.min(x0, o.outline[i]!); x1 = Math.max(x1, o.outline[i]!);
+      y0 = Math.min(y0, o.outline[i + 1]!); y1 = Math.max(y1, o.outline[i + 1]!);
+    }
+    return { outline: o.outline, seed: { x: o.seed[0], y: o.seed[1] }, area: o.area, bounds: { x0, y0, x1, y1 } };
+  });
+  foundCache.set(key, objects);
+  while (foundCache.size > FOUND_CACHE_SIZE) foundCache.delete(foundCache.keys().next().value!);
+  return objects;
+}
+
+/** The found object under `p` (layer-local px): the smallest whose outline holds it, else null. */
+export function objectAt(objects: readonly FoundObject[], p: { x: number; y: number }): FoundObject | null {
+  let best: FoundObject | null = null;
+  for (const o of objects) {
+    const b = o.bounds;
+    if (p.x < b.x0 || p.x > b.x1 || p.y < b.y0 || p.y > b.y1) continue;
+    if (best && o.area >= best.area) continue;
+    // Even-odd ray cast against the outline.
+    let inside = false;
+    const f = o.outline;
+    for (let i = 0, j = f.length - 2; i + 1 < f.length; j = i, i += 2) {
+      const xi = f[i]!, yi = f[i + 1]!, xj = f[j]!, yj = f[j + 1]!;
+      if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) best = o;
+  }
+  return best;
 }
 
 /** How a subject edit changes the frame's matte (the Object Matte tool group). */

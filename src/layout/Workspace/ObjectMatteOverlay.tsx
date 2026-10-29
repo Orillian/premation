@@ -26,8 +26,12 @@ import { lassoPrompts, useRotoBrushStore } from '@stores/rotoBrushStore';
 import { getWorkspaceController } from '@core/workspace/WorkspaceController';
 import {
   boxAt,
-  runSubjectEdit,
+  findObjects,
+  foundObjectsCached,
+  objectAt,
   previewObjectMatte,
+  runSubjectEdit,
+  type FoundObject,
   type ObjectMattePreview,
   type SubjectEditRequest,
 } from '@core/workspace/rotoBrushTool';
@@ -38,14 +42,15 @@ import { useLayerScreenMapping } from './useLayerScreenMapping';
 import type { LayerScreenMapping } from './layerScreen';
 import { useDisplayedCamera2D } from './useOverlayView';
 import { autoInstallObjectMatte, offerSam2Tracking } from '@layout/Settings/objectMatteJob';
+import { subjectBoundaryPath } from './subjectBoundary';
 import styles from './ObjectMatteOverlay.module.css';
 import { t } from '@core/i18n';
 
 /** How long the pointer rests before a hover preview starts. */
 const HOVER_MS = 300;
-/** How long the playhead rests on a frame before it is warmed (scrubbing warms nothing). */
+/** How long the playhead rests on a frame before its objects are searched (scrubbing searches nothing). */
 const WARM_MS = 250;
-/** The frame last warmed, shared: the Composition viewer and the Layer panel warm it once between them. */
+/** The frame last searched, shared: the Composition viewer and the Layer panel search it once between them. */
 let warmedFrame: string | null = null;
 /** A press that moves further than this is a box, not a click. */
 const DRAG_PX = 4;
@@ -110,6 +115,10 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [looking, setLooking] = useState(false);
+  // Find Objects: every object of this frame (lit faintly), and the one under the pointer (lit strongly).
+  const [objects, setObjects] = useState<FoundObject[] | null>(null);
+  const [hot, setHot] = useState<FoundObject | null>(null);
+  const [finding, setFinding] = useState(false);
   const [drag, setDrag] = useState<{ from: Pt; to: Pt; path: Pt[] } | null>(null);
   const marquee = useRotoBrushStore((s) => s.marquee);
   const pressRef = useRef<{ from: Pt; client: Pt; shift: boolean; alt: boolean } | null>(null);
@@ -155,21 +164,35 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
   // A new frame, layer or tool invalidates the preview: it is of one frame of one layer.
   useEffect(() => clearHover, [active, nodeId, time, sceneTick, clearHover]);
 
-  // Warm the frame: the job caches the encoder's output per frame on disk
-  // (the slow half of SAM), so segmenting the frame once as soon as the tool
-  // rests on it makes the first real hover a decoder-only pass. Its result is
-  // dropped; nothing is written.
+  // Find the frame's objects once the playhead rests on it (Premiere's Object
+  // Mask lights every selectable object on hover): one search per frame, kept,
+  // so moving the pointer is a lookup. It also warms the frame's encoding, so a
+  // click — or the per-point hover where no object was found — is decoder-only.
   useEffect(() => {
-    if (!active || !nodeId) return;
+    setHot(null);
+    if (!active || !nodeId) {
+      setObjects(null);
+      return;
+    }
+    const cached = foundObjectsCached(nodeId, time);
+    setObjects(cached ?? null);
+    if (cached) return;
+    let live = true;
     const key = `${nodeId}@${time}`;
-    if (warmedFrame === key) return;
     const timer = window.setTimeout(() => {
-      if (useRotoBrushStore.getState().busy || warmedFrame === key) return;
+      if (useRotoBrushStore.getState().busy) return;
       warmedFrame = key;
-      const probe = [{ id: 'warm', kind: 'fg' as const, points: [{ x: 0, y: 0 }], time }];
-      void previewObjectMatte(nodeId, probe, time).then((p) => p?.discard()).catch(() => undefined);
-    }, WARM_MS);
-    return () => window.clearTimeout(timer);
+      setFinding(true);
+      void findObjects(nodeId, time)
+        .then((found) => { if (live) setObjects(found ?? []); })
+        .catch((err: unknown) => { if (live) reportFailure(err); })
+        .finally(() => { if (live) setFinding(false); });
+    }, warmedFrame === key ? 0 : WARM_MS);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+      setFinding(false);
+    };
   }, [active, nodeId, time]);
 
   const fps = (): number => settingsFps(activeCompSettingsNow());
@@ -236,7 +259,9 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
     hoverSeq.current++;
     // The hover only showed the outline; the click makes the matte itself (the frame's encoding is warm).
     held?.preview.discard();
-    select({ tool: 'segment', op: opOf(shift, alt), clicks: [p] });
+    // On a found object: its own seed, so the selection is the object that was lit.
+    const found = objects ? objectAt(objects, p) : null;
+    select({ tool: 'segment', op: opOf(shift, alt), clicks: [found ? found.seed : p] });
   };
 
   useEffect(() => {
@@ -272,7 +297,9 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
     ? t('workspace.objectMatte.selectLayer', 'Select one footage layer, then hover the subject.')
     : status ?? (looking
       ? t('workspace.objectMatte.looking', 'Looking…')
-      : hover
+      : finding && !objects
+        ? t('workspace.objectMatte.finding', 'Finding objects…')
+      : hover || hot
         ? (marquee === 'lasso'
           ? t('workspace.objectMatte.clickToSelectLasso', 'Click to select · Shift-click adds · Alt-click subtracts · drag a lasso')
           : t('workspace.objectMatte.clickToSelect', 'Click to select · Shift-click adds · Alt-click subtracts · drag for a box'))
@@ -303,6 +330,14 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
           return;
         }
         if (busy) return;
+        // Over a found object: lit at once, no model call.
+        const found = objects ? objectAt(objects, p) : null;
+        if (found) {
+          if (found !== hot) setHot(found);
+          if (hoverRef.current || hoverTimer.current !== null) clearHover();
+          return;
+        }
+        if (hot) setHot(null);
         const h = hoverRef.current;
         // Still on the previewed spot: keep it rather than re-asking the model.
         if (h && Math.hypot(h.at.x - p.x, h.at.y - p.y) <= SAME_SPOT_PX) return;
@@ -341,11 +376,17 @@ function ObjectMatteOverlayActive({ host }: { host?: ObjectMatteHost }): JSX.Ele
         click(p, press.shift, press.alt);
       }}
       onPointerLeave={() => {
-        if (!pressRef.current) clearHover();
+        if (!pressRef.current) {
+          clearHover();
+          setHot(null);
+        }
       }}
     >
       <svg className={styles.svg} aria-hidden="true">
-        {hover && (
+        {nodeId && mapping && <path className={styles.boundary} d={subjectBoundaryPath(nodeId, time, toScreen)} />}
+        {objects?.map((o, i) => (o === hot ? null : <path key={i} className={styles.object} d={outlinePath(o.outline)} />))}
+        {hot && <path className={styles.preview} d={outlinePath(hot.outline)} />}
+        {!hot && hover && (
           <path className={styles.preview} d={outlinePath(hover.preview.outline)} />
         )}
         {drag && marquee === 'lasso' ? (

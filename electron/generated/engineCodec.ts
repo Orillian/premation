@@ -8585,6 +8585,7 @@ function encS_ObjectMatteJob(w: Writer, v: T.ObjectMatteJob): void {
   if (v.outputFolder !== undefined) { w.varint(5722); w.str(v.outputFolder); }
   if (v.origin !== undefined) { w.varint(5728); w.i64(v.origin); }
   if (v.edit !== undefined) { w.varint(5738); { const s = w.beginLd(); encS_SubjectEdit(w, v.edit); w.endLd(s); } }
+  if (v.proposals !== undefined) { w.varint(5744); w.bool(v.proposals); }
 }
 function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   const l_prompts: T.Vec2[] = [];
@@ -8609,6 +8610,7 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   let v_outputFolder: string | undefined;
   let v_origin: number | undefined;
   let v_edit: T.SubjectEdit | undefined;
+  let v_proposals: boolean | undefined;
   while (r.pos < end) {
     const key = r.varint();
     switch (key) {
@@ -8630,6 +8632,7 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
       case 5722: v_outputFolder = r.str(); break;
       case 5728: v_origin = r.i64(); break;
       case 5738: v_edit = decS_SubjectEdit(r, r.ldEnd(), {}); break;
+      case 5744: v_proposals = r.bool(); break;
       default: r.skip(key);
     }
   }
@@ -8656,6 +8659,7 @@ function decS_ObjectMatteJob(r: Reader, end: number, o: any): T.ObjectMatteJob {
   if (v_outputFolder !== undefined) o.outputFolder = v_outputFolder;
   if (v_origin !== undefined) o.origin = v_origin;
   if (v_edit !== undefined) o.edit = v_edit;
+  if (v_proposals !== undefined) o.proposals = v_proposals;
   return o;
 }
 function encS_SubjectEdit(w: Writer, v: T.SubjectEdit): void {

@@ -284,6 +284,20 @@ class SubjectEditResult final : public JobResult {
   mutable std::string mask_;
 };
 
+/// A result that only reports (Find Objects): nothing to apply.
+class SummaryOnlyResult final : public JobResult {
+ public:
+  SummaryOnlyResult(std::string label, Json summary) : label_(std::move(label)), summary_(std::move(summary)) {}
+  [[nodiscard]] std::string summary_json() const override { return js::stringify(summary_); }
+  [[nodiscard]] std::string label() const override { return label_; }
+  [[nodiscard]] bool has_edits() const override { return false; }
+  void apply(JobApply& /*a*/) const override {}
+
+ private:
+  std::string label_;
+  Json summary_;
+};
+
 /// The model file: the spec's, else `<dir>/<file>` (the user's or the bundled folder); '' when neither.
 std::string model_path(const std::string& given, const std::optional<std::string>& dir, const char* file) {
   if (!given.empty()) return given;
@@ -592,8 +606,10 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
     }
   }
   const sam::Letterbox lb = sam::letterbox(img.width, img.height);
+  // Every object of the frame (the tool's hover lights them all): grid clicks, no prompt of the user's.
+  const bool proposing = in->at("proposals").is_bool() && in->at("proposals").b();
   const std::optional<sam::Prompts> prompts = sam::prompts_for(points, box, lb.scale);
-  if (!prompts) fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.");
+  if (!prompts && !proposing) fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.");
 
   if (control.cancelled()) return "{}";
   // The models stay loaded while the files are the same; a decoder-only load
@@ -637,6 +653,76 @@ std::string object_matte_child(const std::string& inputJson, JobControl& control
   }
 
   if (control.cancelled()) return "{}";
+  if (proposing) {
+    control.progress(0.6, "Finding the objects");
+    const auto tFind = Clock::now();
+    const std::vector<subject::Pt> all = subject::proposal_grid(img.width, img.height, 14);
+    // A click is asked only where nothing found so far already lies (the wall a click found covers
+    // the next twenty grid points): most of the grid never reaches the decoder.
+    constexpr std::size_t kPlaneF = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
+    std::vector<std::uint8_t> covered(kPlaneF, 0);
+    std::vector<subject::Pt> grid;
+    sam::Decoded allOut;
+    subject::Intent lone;
+    lone.loneClick = true;
+    const auto cell = [&](double v) { return static_cast<std::size_t>(std::clamp(std::lround(v * lb.scale / 4.0), 0L, static_cast<long>(sam::kMaskSize - 1))); };
+    for (const subject::Pt& p : all) {
+      if (control.cancelled()) return "{}";
+      if (covered[cell(p.y) * sam::kMaskSize + cell(p.x)] != 0) continue;
+      const std::array<sam::Point, 1> click{sam::Point{p.x, p.y, 1}};
+      const std::optional<sam::Prompts> pr = sam::prompts_for(click, std::nullopt, lb.scale);
+      sam::Decoded one;
+      if (!pr || !models.decode(*emb, *pr, one, error)) fail(ErrorCode::internal, "SAM decoder: " + error);
+      if (one.predMasks.data.size() < 3 * kPlaneF || one.iouScores.data.size() < 3) continue;
+      const std::size_t k = subject::choose_candidate(one.iouScores.data, one.predMasks.data, click, lb.scale, lone, img.width, img.height);
+      for (std::size_t i = 0; i < kPlaneF; ++i) covered[i] |= one.predMasks.data[k * kPlaneF + i] > 0.0f ? 1 : 0;
+      grid.push_back(p);
+      allOut.iouScores.data.insert(allOut.iouScores.data.end(), one.iouScores.data.begin(), one.iouScores.data.begin() + 3);
+      allOut.predMasks.data.insert(allOut.predMasks.data.end(), one.predMasks.data.begin(), one.predMasks.data.begin() + 3 * kPlaneF);
+    }
+    const double findMs = ms_since(tFind);
+    const std::vector<subject::Proposal> found =
+        subject::select_proposals(allOut.iouScores.data, allOut.predMasks.data, grid, lb.scale, img.width, img.height, 24);
+    // Each object's outline, traced at up to 512 px on the long side (a highlight, not a matte).
+    const double fit = std::min(1.0, 512.0 / static_cast<double>(std::max(img.width, img.height)));
+    const auto mw = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(img.width * fit)));
+    const auto mh = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::lround(img.height * fit)));
+    constexpr std::size_t kPlaneP = static_cast<std::size_t>(sam::kMaskSize) * sam::kMaskSize;
+    Json objects = Json::array();
+    for (const subject::Proposal& p : found) {
+      const std::vector<std::uint8_t> mask =
+          sam::upsample_mask(allOut.predMasks.data, (p.point * 3 + p.candidate) * kPlaneP, mw, mh, sam::letterbox(mw, mh).scale);
+      const std::vector<trace::TracePoint> contour = sam::matte_contour(mask, mw, mh, 96);
+      if (contour.size() < 3) continue;
+      Json o = Json::object();
+      Json c = Json::array();
+      for (const trace::TracePoint& tp : contour) {
+        c.arr_mut().push_back(Json::number(tp.x * img.width / mw));
+        c.arr_mut().push_back(Json::number(tp.y * img.height / mh));
+      }
+      o.set("contour", std::move(c));
+      Json seed = Json::array();
+      seed.arr_mut() = {Json::number(grid[p.point].x), Json::number(grid[p.point].y)};
+      o.set("seed", std::move(seed));
+      o.set("iou", Json::number(p.iou));
+      o.set("area", Json::number(p.area));
+      objects.arr_mut().push_back(std::move(o));
+    }
+    Json r = Json::object();
+    r.set("width", Json::number(img.width));
+    r.set("height", Json::number(img.height));
+    r.set("layerWidth", Json::number(layerW));
+    r.set("layerHeight", Json::number(layerH));
+    r.set("provider", Json::string(models.provider()));
+    r.set("objects", std::move(objects));
+    Json tj = Json::object();
+    tj.set("encode", Json::number(timings.encode));
+    tj.set("decode", Json::number(findMs));
+    tj.set("points", Json::number(static_cast<double>(grid.size())));
+    tj.set("total", Json::number(ms_since(t0)));
+    r.set("timings", std::move(tj));
+    return js::stringify(r);
+  }
   control.progress(0.8, "Segmenting");
   const auto tDec = Clock::now();
   sam::Decoded out;
@@ -1502,7 +1588,7 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
     };
     add(spec.prompts, 1);
     add(spec.background_prompts, 0);
-    if (points.arr().empty() && originMatte.empty()) {
+    if (points.arr().empty() && originMatte.empty() && !spec.proposals.value_or(false)) {
       fail(ErrorCode::invalid_argument, "Nothing to segment — click the object or drag a box around it.",
            {.layer = spec.layer});
     }
@@ -1640,6 +1726,53 @@ PreparedJob prepare_object_matte(const api::ObjectMatteJob& spec, const JobDocCo
       run.msPerFrame = num_or(*r, "msPerFrame", 0);
       if (r->at("stageMs").is_object()) run.stageMs = r->at("stageMs");
       return std::make_unique<ObjectMatteVideoResult>(layer, std::move(frames), status, store, replace, std::move(run));
+    };
+    return job;
+  }
+
+  if (spec.proposals.value_or(false) && !spec.direction) {
+    input.set("proposals", Json::boolean(true));
+    PreparedJob job;
+    job.kind = "objectMatte";
+    WorkerCall call;
+    if (ctx.preview) {
+      call.supersedeKey = "objectMatteProposals:" + fl.layer;
+      call.generation = claim_generation(call.supersedeKey);  // a newer frame's search drops a queued older one
+    }
+    job.work = [layer = fl.layer, inputJson = js::stringify(input), call](JobControl& control) -> std::unique_ptr<JobResult> {
+      const std::optional<std::string> out = run_in_worker("objectMatte", inputJson, control, call);
+      if (!out) return nullptr;
+      const std::optional<Json> r = js::parse(*out);
+      if (!r || !r->is_object() || !r->at("objects").is_array()) fail(ErrorCode::internal, "objectMatte: bad child result");
+      const double w = num_or(*r, "width", 0);
+      const double h = num_or(*r, "height", 0);
+      const double lw = num_or(*r, "layerWidth", 0);
+      const double lh = num_or(*r, "layerHeight", 0);
+      if (!(w > 0) || !(h > 0)) fail(ErrorCode::internal, "objectMatte: bad child result");
+      // Frame px → layer-centred px, as the outline of a selection is.
+      const auto lx = [&](double x) { return (x / w - 0.5) * lw; };
+      const auto ly = [&](double y) { return (y / h - 0.5) * lh; };
+      Json objects = Json::array();
+      for (const Json& o : r->at("objects").arr()) {
+        Json outline = Json::array();
+        const Json::Array& c = o.at("contour").arr();
+        for (std::size_t i = 0; i + 1 < c.size(); i += 2) {
+          outline.arr_mut().push_back(Json::number(lx(c[i].num())));
+          outline.arr_mut().push_back(Json::number(ly(c[i + 1].num())));
+        }
+        Json seed = Json::array();
+        seed.arr_mut() = {Json::number(lx(o.at("seed").arr()[0].num())), Json::number(ly(o.at("seed").arr()[1].num()))};
+        Json e = Json::object();
+        e.set("outline", std::move(outline));
+        e.set("seed", std::move(seed));
+        e.set("iou", o.at("iou"));
+        e.set("area", o.at("area"));
+        objects.arr_mut().push_back(std::move(e));
+      }
+      Json summary = Json::object();
+      summary.set("objects", std::move(objects));
+      if (r->at("timings").is_object()) summary.set("timings", r->at("timings"));
+      return std::make_unique<SummaryOnlyResult>("Find Objects", std::move(summary));
     };
     return job;
   }

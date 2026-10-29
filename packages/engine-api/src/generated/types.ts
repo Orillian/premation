@@ -3141,6 +3141,8 @@ export interface ObjectMatteJob {
   origin?: Time;
   /** One frame (no `direction`): edit the layer's SUBJECT — its soft raster matte at `range.start` (setLayerMatte, merged with the other frames) — instead of writing a mask. `tool` segment: the model from `prompts` / `box` / this frame's `strokes` (sparse-sampled); paint: the strokes' brush (radius `radius` layer px) painted exactly; refine: soft alpha estimated against the picture inside the strokes' band. `op` replace / add / subtract against the frame's current matte. The outline is kept as the "Object Matte" mask (mode none). `cut`: a newly made Object Matte effect cuts the layer (default false: the subject is a selection; Remove Background turns the effect on). */
   edit?: SubjectEdit;
+  /** One frame, nothing written (start it with apply: false): every object the model finds in the frame at `range.start` — the Object Matte tool's hover lights them all. The summary is {"objects":[{"outline":[x,y…],"seed":[x,y],"iou":N,"area":N}]} in layer-centred px; a click at an object's `seed` selects that object. */
+  proposals?: boolean;
 }
 
 export interface SubjectEdit {

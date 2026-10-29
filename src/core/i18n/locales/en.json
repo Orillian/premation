@@ -10269,6 +10269,7 @@
   "workspace.objectMatte.clickToSelectLasso": "Click to select · Shift-click adds · Alt-click subtracts · drag a lasso",
   "workspace.objectMatte.downloading": "Getting the Object Matte model (one time, about 14 MB)… try again when it finishes.",
   "workspace.objectMatte.failed": "Object Matte failed.",
+  "workspace.objectMatte.finding": "Finding objects…",
   "workspace.objectMatte.lassoEmpty": "Draw the lasso around the subject (a closed loop).",
   "workspace.objectMatte.looking": "Looking…",
   "workspace.objectMatte.nothing": "Nothing found there — click the subject itself, or drag a box around it.",

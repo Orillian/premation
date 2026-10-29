@@ -417,10 +417,10 @@ function RotoOptions({ objectMatteTool = false, brush }: { objectMatteTool?: boo
 
   // Re-read on every document change: frozen is the matte mask's own name.
   const rotoTree = useMirrorTree(nodeId);
-  const mattes = nodeId && rotoTree ? rotoMattes(nodeId) : { live: [], frozen: [] };
-  const frozen = mattes.frozen.length > 0;
+  const mattes = nodeId && rotoTree ? rotoMattes(nodeId) : { live: [], frozen: [], subject: [], subjectFrozen: [] };
+  const frozen = mattes.frozen.length > 0 || mattes.subjectFrozen.length > 0;
   const matteCard = nodeId && rotoTree ? objectMatteCard(nodeId) : null;
-  const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0);
+  const canFreeze = !!nodeId && !busy && (frozen || mattes.live.length > 0 || mattes.subject.length > 0);
   // A subject on the layer (its "Object Matte" outline) is where propagation starts, strokes or not.
   const hasSubject = !!nodeId && !!rotoTree && mirrorMaskHeaders(rotoTree).some((m) => m.name === 'Object Matte');
   const canPropagate = !!nodeId && (hasSubject || strokes.some((s) => s.kind === 'fg') || box !== null) && !busy && !frozen;

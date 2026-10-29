@@ -66,7 +66,7 @@ export function subjectStateNow(layer: string): SubjectState {
   return {
     selected: masks.some((x) => MATTE_NAMES.has(x.name)),
     followed,
-    frozen: r.frozen.length > 0,
+    frozen: r.frozen.length > 0 || r.subjectFrozen.length > 0,
     cuts: cutsNow(layer, r),
   };
 }
@@ -98,7 +98,7 @@ export async function subjectStateOf(layer: string): Promise<SubjectState> {
   return {
     selected: masks.some((x) => MATTE_NAMES.has(x.name)),
     followed: (await matteOutlineKeys(layer)) !== null,
-    frozen: r.frozen.length > 0,
+    frozen: r.frozen.length > 0 || r.subjectFrozen.length > 0,
     cuts: cutsNow(layer, r),
   };
 }

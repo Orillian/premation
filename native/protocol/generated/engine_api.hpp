@@ -3362,6 +3362,7 @@ struct ObjectMatteJob {
   std::optional<std::string> output_folder;
   std::optional<Time> origin;
   std::optional<SubjectEdit> edit;
+  std::optional<bool> proposals;
   bool operator==(const ObjectMatteJob&) const = default;
 };
 

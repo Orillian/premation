@@ -10097,5 +10097,6 @@
   "effects.stack.applyToTitle": "Dónde actúa este efecto: toda la capa, solo el sujeto seleccionado o todo excepto el sujeto.",
   "workspace.refineEdge.working": "Refinando el borde…",
   "topNav.roto.selectionBrushPaintHint": "Pinta la selección exactamente donde pasa el pincel; Alt+pintar la borra. Sin ajuste a bordes.",
-  "topNav.roto.refineEdgeBandHint": "Pinta a lo largo del pelo o el pelaje: el borde bajo el pincel se suaviza, mechón a mechón."
+  "topNav.roto.refineEdgeBandHint": "Pinta a lo largo del pelo o el pelaje: el borde bajo el pincel se suaviza, mechón a mechón.",
+  "workspace.objectMatte.finding": "Buscando objetos…"
 }
