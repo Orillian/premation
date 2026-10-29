@@ -14,7 +14,7 @@
 
 import { create } from 'zustand';
 import type { ExportFormat } from '@core/export/exportManager';
-import type { ExportQuality, ProresProfile } from '@core/export/renderSpec';
+import type { ExportQuality, Mp4Codec, ProresProfile } from '@core/export/renderSpec';
 
 export type RangeMode = 'full' | 'work';
 
@@ -24,7 +24,10 @@ export interface ExportFormChoices {
   /** Index into the resolution presets (Full / Half / Quarter). */
   scaleIdx: number;
   quality: ExportQuality;
+  /** mov: the codec and profile (ProRes or DNxHR). */
   proresProfile: ProresProfile;
+  /** mp4: H.264 (the Settings encoder), HEVC or AV1. */
+  mp4Codec: Mp4Codec;
   /** F1: bits per channel of a mov through the engine export path (8 elsewhere). */
   bitDepth: 8 | 16;
   transparent: boolean;
@@ -51,6 +54,7 @@ export const useExportFormStore = create<ExportFormState>((set, get) => ({
   scaleIdx: 0,
   quality: 'high',
   proresProfile: '4444',
+  mp4Codec: 'h264',
   bitDepth: 8,
   transparent: false,
   chapters: false,

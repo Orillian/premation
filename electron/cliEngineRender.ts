@@ -62,6 +62,7 @@ export function cliEngineSpec(job: CliRenderJob & { hdrEncoder?: 'libx265' | 'li
     ...(job.scale !== undefined && job.scale !== 1 && job.width === undefined && job.height === undefined ? { scale: job.scale } : {}),
     ...(job.quality !== undefined ? { quality: job.quality } : {}),
     ...(job.proresProfile !== undefined ? { proresProfile: job.proresProfile } : {}),
+    ...(job.videoEncoder !== undefined ? { videoEncoder: job.videoEncoder } : {}),
     ...(job.transparent !== undefined ? { transparent: job.transparent } : {}),
     ...(job.hdrEncoder !== undefined ? { hdrEncoder: job.hdrEncoder } : {}),
   };

@@ -18,7 +18,7 @@ import type {
   ExportJobStatus,
   ExportQueueEvent,
 } from '@app-types/motionEditor';
-import type { RenderJobSpec } from '@core/export/renderSpec';
+import { offersDeepColour, type RenderJobSpec } from '@core/export/renderSpec';
 import { t } from '@core/i18n';
 
 export type { ExportJobRecord, ExportJobSpec, ExportJobStatus, ExportQueueEvent };
@@ -93,7 +93,7 @@ export interface SupervisorSpecInput {
   /** Export range in seconds, end exclusive. */
   range: { startSec: number; endSec: number };
   quality: 'high' | 'medium' | 'draft';
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   transparent: boolean;
   videoEncoder?: RenderJobSpec['videoEncoder'];
   chapters?: RenderJobSpec['chapters'];
@@ -142,8 +142,8 @@ export function buildSupervisorSpec(input: SupervisorSpecInput): ExportJobSpec {
   if (input.videoEncoder) spec.videoEncoder = input.videoEncoder;
   if (input.chapters && input.chapters.length > 0) spec.chapters = input.chapters;
   if (input.pluginOptions !== undefined && input.format.startsWith('plugin:')) spec.pluginOptions = input.pluginOptions;
-  // Main refuses 16 bits for anything but mov; the form only offers it there.
-  if (input.bitDepth === 16 && input.format === 'mov') spec.bitDepth = 16;
+  // 16 bits only where the writer keeps them (mov, EXR / TIFF / DPX sequences).
+  if (input.bitDepth === 16 && offersDeepColour(input.format)) spec.bitDepth = 16;
   return spec;
 }
 

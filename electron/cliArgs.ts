@@ -27,6 +27,8 @@ export const CLI_FORMATS = [
   'png-sequence',
   'jpg-sequence',
   'exr-sequence',
+  'tiff-sequence',
+  'dpx-sequence',
   'png',
 ] as const;
 
@@ -36,7 +38,12 @@ export const CLI_QUALITIES = ['high', 'medium', 'draft'] as const;
 export type CliQuality = (typeof CLI_QUALITIES)[number];
 
 export const PRORES_PROFILES = ['proxy', 'lt', '422', 'hq', '4444'] as const;
-export type ProresProfile = (typeof PRORES_PROFILES)[number];
+/** `--codec` for mov: Avid DNxHR instead of ProRes (written into `proresProfile`, the mov codec field). */
+export const DNXHR_PROFILES = ['dnxhr-lb', 'dnxhr-sq', 'dnxhr-hq', 'dnxhr-hqx', 'dnxhr-444'] as const;
+export type ProresProfile = (typeof PRORES_PROFILES)[number] | (typeof DNXHR_PROFILES)[number];
+/** `--codec` for mp4: the software encoder (H.264 is the default). */
+export const MP4_CODECS = { h264: 'libx264', hevc: 'libx265', av1: 'libsvtav1' } as const;
+export type Mp4Codec = keyof typeof MP4_CODECS;
 
 /**
  * Target shapes `reframe` accepts.
@@ -74,6 +81,8 @@ export interface CliRenderJob {
   height?: number;
   quality?: CliQuality;
   proresProfile?: ProresProfile;
+  /** mp4 only — `--codec hevc|av1`: the software encoder (libx264 when absent). */
+  videoEncoder?: (typeof MP4_CODECS)[Mp4Codec];
   transparent?: boolean;
   /**
    * Retarget to this aspect before rendering (the `reframe` command).
@@ -191,6 +200,8 @@ RENDER OPTIONS
   --height <px>        Output height.
   --quality <tier>     ${CLI_QUALITIES.join(', ')}. Default: high.
   --prores <profile>   mov only: ${PRORES_PROFILES.join(', ')}. Default: 4444.
+  --codec <codec>      mov: ${DNXHR_PROFILES.join(', ')} (Avid DNxHR instead of ProRes).
+                       mp4: ${Object.keys(MP4_CODECS).join(', ')}. Default: h264.
   --transparent        Force an alpha channel on regardless of the comp's setting.
 
 REFRAME OPTIONS
@@ -253,6 +264,7 @@ const VALUED_FLAGS = new Set([
   '--height',
   '--quality',
   '--prores',
+  '--codec',
   '--data',
   '--from-row',
   '--aspect',
@@ -306,6 +318,8 @@ export function extensionFor(format: CliFormat): string {
     case 'png-sequence':
     case 'jpg-sequence':
     case 'exr-sequence':
+    case 'tiff-sequence':
+    case 'dpx-sequence':
       return 'zip';
     // Both HDR deliveries are MP4s (an .mp4 --out still means plain mp4).
     case 'hdr10':
@@ -527,6 +541,21 @@ export function parseCli(args: readonly string[]): CliInvocation {
       return { kind: 'error', message: '"--prores" only applies to --format mov.' };
     }
     job.proresProfile = prores as ProresProfile;
+  }
+
+  const codec = flags.get('--codec');
+  if (codec !== undefined) {
+    if (format === 'mov' && (DNXHR_PROFILES as readonly string[]).includes(codec)) {
+      if (prores !== undefined) return { kind: 'error', message: '"--codec" and "--prores" both choose the mov codec; give one.' };
+      job.proresProfile = codec as ProresProfile;
+    } else if (format === 'mp4' && Object.prototype.hasOwnProperty.call(MP4_CODECS, codec)) {
+      job.videoEncoder = MP4_CODECS[codec as Mp4Codec];
+    } else if (format === 'mov' || format === 'mp4') {
+      const choices = format === 'mov' ? DNXHR_PROFILES.join(', ') : Object.keys(MP4_CODECS).join(', ');
+      return { kind: 'error', message: `Unknown ${format} codec "${codec}". Choose one of: ${choices}.` };
+    } else {
+      return { kind: 'error', message: '"--codec" only applies to --format mov or mp4.' };
+    }
   }
 
   if (bools.has('--transparent')) job.transparent = true;

@@ -42,6 +42,9 @@ import {
   buildEncodeArgs,
   buildHdrEncodeArgs,
   DEFAULT_HDR_MASTERING,
+  isDnxhrProfile,
+  isHwVideoEncoder,
+  isSwVideoEncoder,
   rawVideoInput,
   type EncodeFormat,
   type HdrMastering,
@@ -64,7 +67,7 @@ export interface EngineExportSpec {
   /** Uniform scale of the comp size when neither width nor height is given. */
   scale?: number;
   quality?: 'high' | 'medium' | 'draft';
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   transparent?: boolean;
   videoEncoder?: string;
   chapters?: unknown;
@@ -150,7 +153,7 @@ export interface EngineExportDeps {
  * sequences, a still PNG (a one-frame sequence) and the WAV mixdown (the
  * engine's audio-only job).
  */
-const ENGINE_FORMATS: ReadonlySet<string> = new Set<string>(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'png', 'wav']);
+const ENGINE_FORMATS: ReadonlySet<string> = new Set<string>(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'tiff-sequence', 'dpx-sequence', 'png', 'wav']);
 
 /** The HDR transfer a spec delivers, or null for SDR: `hdr10` = PQ and `hlg` in MP4, or a mov's `hdr`. */
 export function hdrTransferOf(spec: Pick<EngineExportSpec, 'format' | 'hdr'>): HdrTransfer | null {
@@ -174,8 +177,13 @@ export function isPluginFormat(format: string): boolean {
   return /^plugin:[A-Za-z][\w.-]{0,99}\/[A-Za-z0-9_][\w.-]{0,63}$/.test(format);
 }
 
+/** Image sequences: `<kind>-sequence`, written by the engine as workDir/frames.<ext>.zip. */
+const SEQUENCE_EXT: Readonly<Record<string, string>> = {
+  'png-sequence': 'png', 'jpg-sequence': 'jpg', 'exr-sequence': 'exr', 'tiff-sequence': 'tif', 'dpx-sequence': 'dpx',
+};
+
 function isSequence(format: string): boolean {
-  return format === 'png-sequence' || format === 'jpg-sequence' || format === 'exr-sequence';
+  return Object.prototype.hasOwnProperty.call(SEQUENCE_EXT, format);
 }
 
 /** The engine writes these itself: no ffmpeg command line is sent. */
@@ -206,13 +214,14 @@ export function engineIneligible(spec: EngineExportSpec, enginePath: string | nu
   if (!enginePath) return 'premation-engine is not available';
   if (!ENGINE_FORMATS.has(spec.format) && !isPluginFormat(spec.format)) return `the engine does not write "${spec.format}"`;
   if (Array.isArray(spec.chapters) && spec.chapters.length > 0 && !resolvedChapters(spec.chapters)) return 'chapters are formatted by the editor';
+  if (hdrTransferOf(spec) && isDnxhrProfile(spec.proresProfile)) return 'an HDR master is ProRes 422 HQ or 4444, not DNxHR';
   return null;
 }
 
 function videoEncoderOf(spec: EngineExportSpec): VideoEncoder {
   if (spec.format !== 'mp4') return 'libx264';
   const e = spec.videoEncoder;
-  if (e === 'h264_nvenc' || e === 'hevc_nvenc' || e === 'h264_qsv' || e === 'h264_videotoolbox' || e === 'libx264') return e;
+  if (isHwVideoEncoder(e) || isSwVideoEncoder(e)) return e;
   return 'libx264';
 }
 
@@ -249,9 +258,8 @@ export function engineJobFile(spec: EngineExportSpec, workDir: string, plugins?:
   }
   // A still: a one-frame PNG sequence, unzipped (workDir/frames/frame_00000.png).
   if (spec.format === 'png') job.sequence = 'png';
-  if (spec.format === 'png-sequence') job.sequence = 'png-zip';
-  if (spec.format === 'jpg-sequence') job.sequence = 'jpg-zip';
-  if (spec.format === 'exr-sequence') job.sequence = 'exr-zip';
+  // The engine's sequence names: png / jpg / exr / tiff / dpx, zipped.
+  if (isSequence(spec.format)) job.sequence = `${spec.format.slice(0, -'-sequence'.length)}-zip`;
   // P7c: the plugin's output module writes the frames (and the mix) to the user's path itself.
   if (isPluginFormat(spec.format)) {
     job.sequence = spec.format;
@@ -311,9 +319,7 @@ export function engineEncodeArgs(spec: EngineExportSpec, pre: EnginePreflight, o
 export function engineOutputFile(workDir: string, format: string): string {
   if (format === 'png') return path.join(workDir, 'frames', 'frame_00000.png');
   if (format === 'wav') return path.join(workDir, 'audio.wav');
-  if (format === 'png-sequence') return path.join(workDir, 'frames.png.zip');
-  if (format === 'jpg-sequence') return path.join(workDir, 'frames.jpg.zip');
-  if (format === 'exr-sequence') return path.join(workDir, 'frames.exr.zip');
+  if (isSequence(format)) return path.join(workDir, `frames.${SEQUENCE_EXT[format]}.zip`);
   // The HDR deliveries are MP4s; a ".hdr10" file has never existed.
   if (format === 'hdr10' || format === 'hlg') return path.join(workDir, 'out.mp4');
   return path.join(workDir, `out.${format}`);

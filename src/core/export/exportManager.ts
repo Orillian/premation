@@ -43,6 +43,8 @@ export type ExportFormat =
   | 'png-sequence'
   | 'jpg-sequence'
   | 'exr-sequence'
+  | 'tiff-sequence'
+  | 'dpx-sequence'
   | 'wav'
   | PluginOutputFormat
   | DataExportFormat;
@@ -728,9 +730,9 @@ export interface ExportPreset {
 export const EXPORT_PRESETS: ExportPreset[] = [
   {
     format: 'mp4',
-    label: 'MP4 · H.264',
+    label: 'MP4 · H.264 / HEVC / AV1',
     ext: 'mp4',
-    get hint() { return t('core.exportPresets.mp4Hint', 'Plays everywhere. Best default for sharing.'); },
+    get hint() { return t('core.exportPresets.mp4Hint', 'H.264 plays everywhere — the best default for sharing. HEVC and AV1 make smaller files at the same quality.'); },
     desktopOnly: true,
   },
   {
@@ -758,7 +760,7 @@ export const EXPORT_PRESETS: ExportPreset[] = [
     format: 'mov',
     label: 'MOV · ProRes',
     ext: 'mov',
-    get hint() { return t('core.exportPresets.movHint', 'For editing in another app. 4444 keeps alpha; the 422 profiles halve the file for opaque delivery.'); },
+    get hint() { return t('core.exportPresets.movHint', 'For editing in another app. ProRes 4444 keeps alpha; the 422 profiles and Avid DNxHR are opaque intermediates.'); },
     desktopOnly: true,
   },
   {
@@ -794,6 +796,20 @@ export const EXPORT_PRESETS: ExportPreset[] = [
     get label() { return t('core.exportPresets.exrSequence', 'EXR sequence'); },
     ext: 'zip',
     get hint() { return t('core.exportPresets.exrSequenceHint', 'Half-float linear RGB per frame. Prefers GPU linear RT readback (WebGL2 sync / WebGPU async); falls back to display undo-gamma.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'tiff-sequence',
+    get label() { return t('core.exportPresets.tiffSequence', 'TIFF sequence'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.tiffSequenceHint', 'Uncompressed RGBA frames with straight alpha, 8 or 16 bits per channel, zipped.'); },
+    desktopOnly: true,
+  },
+  {
+    format: 'dpx-sequence',
+    get label() { return t('core.exportPresets.dpxSequence', 'DPX sequence'); },
+    ext: 'zip',
+    get hint() { return t('core.exportPresets.dpxSequenceHint', '10-bit RGB frames (SMPTE 268M, Rec. 709) for finishing and film. No alpha.'); },
     desktopOnly: true,
   },
   {

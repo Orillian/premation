@@ -163,7 +163,7 @@ export interface CliRenderRequest {
   width?: number;
   height?: number;
   quality?: 'high' | 'medium' | 'draft';
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   transparent?: boolean;
   /**
    * A data table, already READ by the main process (the renderer never sees a
@@ -214,7 +214,7 @@ export interface ExportJobSpec {
   width?: number;
   height?: number;
   quality?: 'high' | 'medium' | 'draft';
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   transparent?: boolean;
   videoEncoder?: string;
   chapters?: unknown;

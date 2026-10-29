@@ -10,7 +10,7 @@
 import {
   buildEncodeArgs, h264MaxRate, ffmpegRate, rawVideoInput, stagedVideoInput,
   parseFfmpegEncoders, videoEncoderArgs, HW_VIDEO_ENCODERS, isHwVideoEncoder, SRGB_FRAME_PARAMS,
-  buildHdrEncodeArgs, x265HdrParams, x265MasterDisplay, DEFAULT_HDR_MASTERING,
+  buildHdrEncodeArgs, x265HdrParams, x265MasterDisplay, DEFAULT_HDR_MASTERING, isDnxhrProfile,
 } from './ffmpegEncodeArgs';
 
 const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
@@ -257,5 +257,42 @@ describe('H.264 bitrate ceiling', () => {
 
   it('adds nothing when the frame size is unknown', () => {
     expect(buildEncodeArgs({ ...base, quality: 'high' })).not.toContain('-maxrate');
+  });
+});
+
+describe('per-output-module codecs: HEVC, AV1, DNxHR', () => {
+  const raw = rawVideoInput(1920, 1080, 30);
+  const frame = { width: 1920, height: 1080, fps: 30 };
+
+  it('HEVC (libx265) in mp4: x265 CRF tiers, hvc1 tag, 8-bit 4:2:0, the same ceiling and audio', () => {
+    const args = buildEncodeArgs({ format: 'mp4', videoInput: raw, quality: 'medium', audio: '/a.wav', chaptersFile: null, alpha: false, frame, videoEncoder: 'libx265', out: OUT });
+    expect(args.join(' ')).toContain('-c:v libx265 -preset medium -crf 24');
+    expect(args).toEqual(expect.arrayContaining(['-tag:v', 'hvc1', '-pix_fmt', 'yuv420p', '-maxrate', '-c:a', 'aac']));
+  });
+
+  it('AV1 (SVT-AV1) in mp4: preset/CRF per tier and a 10-bit stream, no hvc1 tag', () => {
+    const args = buildEncodeArgs({ format: 'mp4', videoInput: raw, quality: 'high', audio: null, chaptersFile: null, alpha: false, frame, videoEncoder: 'libsvtav1', out: OUT });
+    expect(args.join(' ')).toContain('-c:v libsvtav1 -preset 6 -crf 28');
+    expect(args.join(' ')).toContain('-pix_fmt yuv420p10le');
+    expect(args).not.toContain('-tag:v');
+    expect(videoEncoderArgs('libsvtav1', 'draft')).toEqual(['-c:v', 'libsvtav1', '-preset', '10', '-crf', '40']);
+  });
+
+  it('DNxHR in mov: dnxhd with the dnxhr_* profile and its pixel format, PCM audio', () => {
+    const cases: Array<[string, string, string]> = [
+      ['dnxhr-lb', 'dnxhr_lb', 'yuv422p'],
+      ['dnxhr-sq', 'dnxhr_sq', 'yuv422p'],
+      ['dnxhr-hq', 'dnxhr_hq', 'yuv422p'],
+      ['dnxhr-hqx', 'dnxhr_hqx', 'yuv422p10le'],
+      ['dnxhr-444', 'dnxhr_444', 'yuv444p10le'],
+    ];
+    for (const [profile, flag, pix] of cases) {
+      const args = buildEncodeArgs({ format: 'mov', videoInput: raw, audio: '/a.wav', chaptersFile: null, alpha: false, proresProfile: profile as 'dnxhr-hq', out: '/job/out.mov' });
+      expect(args.join(' ')).toContain(`-c:v dnxhd -profile:v ${flag} -pix_fmt ${pix}`);
+      expect(args).toEqual(expect.arrayContaining(['-c:a', 'pcm_s16le']));
+      expect(args).not.toContain('prores_ks');
+    }
+    expect(isDnxhrProfile('dnxhr-hq')).toBe(true);
+    expect(isDnxhrProfile('hq')).toBe(false);
   });
 });

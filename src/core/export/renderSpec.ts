@@ -20,11 +20,12 @@ export type VideoFormat = 'mp4' | 'hdr10' | 'hlg' | 'webm' | 'gif' | 'mov';
 export type ExportQuality = 'high' | 'medium' | 'draft';
 
 /**
- * ProRes flavour for `.mov` — the same family AE's output modules offer.
- * 4444 is the only one that carries alpha; the 422 tiers trade quality for
- * file size (HQ ≈ mastering, 422 ≈ edit, LT/Proxy ≈ offline).
+ * The `.mov` codec: a ProRes flavour — the same family AE's output modules
+ * offer — or Avid DNxHR. ProRes 4444 is the only one that carries alpha; the
+ * 422 tiers trade quality for file size (HQ ≈ mastering, 422 ≈ edit, LT/Proxy
+ * ≈ offline). DNxHR LB/SQ/HQ are 8-bit 4:2:2, HQX 10-bit 4:2:2, 444 10-bit 4:4:4.
  */
-export type ProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444';
+export type ProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
 
 export const PRORES_PROFILE_LABELS: Record<ProresProfile, string> = {
   get '4444'() { return t('core.renderSpec.prores4444Alpha', 'ProRes 4444 (alpha)'); },
@@ -32,7 +33,26 @@ export const PRORES_PROFILE_LABELS: Record<ProresProfile, string> = {
   '422': 'ProRes 422',
   lt: 'ProRes 422 LT',
   proxy: 'ProRes 422 Proxy',
+  'dnxhr-444': 'DNxHR 444',
+  'dnxhr-hqx': 'DNxHR HQX',
+  'dnxhr-hq': 'DNxHR HQ',
+  'dnxhr-sq': 'DNxHR SQ',
+  'dnxhr-lb': 'DNxHR LB',
 };
+
+/**
+ * The mp4 codec chosen per output module: H.264 follows Settings ▸ Export ▸
+ * Video encoder (software or a hardware encoder); HEVC and AV1 are the
+ * software encoders (libx265, SVT-AV1) the bundled ffmpeg carries.
+ */
+export type Mp4Codec = 'h264' | 'hevc' | 'av1';
+export const MP4_CODEC_ENCODER: Record<Exclude<Mp4Codec, 'h264'>, 'libx265' | 'libsvtav1'> = { hevc: 'libx265', av1: 'libsvtav1' };
+export const MP4_CODEC_LABELS: Record<Mp4Codec, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1' };
+
+/** Formats a job may render at 16 bits per channel: the frames reach the writer as rgba64le. */
+export function offersDeepColour(format: OutputFormat | string): boolean {
+  return format === 'mov' || format === 'tiff-sequence' || format === 'dpx-sequence' || format === 'exr-sequence';
+}
 
 /** The mp4 encoder main's ffmpeg command line uses (Settings ▸ Export ▸ Video encoder). */
 export type VideoEncoderId = 'libx264' | 'h264_nvenc' | 'hevc_nvenc' | 'h264_qsv' | 'h264_videotoolbox';
@@ -60,7 +80,7 @@ export function canEncodeLocally(): boolean {
 /** P7c: `plugin:<plugin id>/<module id>` — a native plugin's output module (core/nativePlugins/pluginContrib.ts). */
 export type PluginOutputFormat = `plugin:${string}`;
 
-export type OutputFormat = VideoFormat | 'png-sequence' | 'jpg-sequence' | 'exr-sequence' | PluginOutputFormat;
+export type OutputFormat = VideoFormat | 'png-sequence' | 'jpg-sequence' | 'exr-sequence' | 'tiff-sequence' | 'dpx-sequence' | PluginOutputFormat;
 
 /**
  * Everything a render needs to know, and nothing about who asked for it.
@@ -115,7 +135,7 @@ export interface RenderJobSpec {
   /** Encoder quality tier. Draft renders fast and looks it. */
   quality?: 'high' | 'medium' | 'draft';
   /** mov only — ProRes flavour, captured from the dialog at queue time. */
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   /** mov only — 16 bits per channel (the engine's half-float surface, rgba64le). */
   bitDepth?: 8 | 16;
   /**
@@ -123,7 +143,7 @@ export interface RenderJobSpec {
    * for the same reason the range is: a preference changed while the job
    * waits must not change what the job was queued to produce.
    */
-  videoEncoder?: 'libx264' | 'h264_nvenc' | 'hevc_nvenc' | 'h264_qsv' | 'h264_videotoolbox';
+  videoEncoder?: 'libx264' | 'h264_nvenc' | 'hevc_nvenc' | 'h264_qsv' | 'h264_videotoolbox' | 'libx265' | 'libsvtav1';
   /**
    * Chapter marks, resolved from the composition's markers at QUEUE time.
    *
@@ -152,6 +172,8 @@ export function outputExtFor(format: OutputFormat): string {
     case 'png-sequence':
     case 'jpg-sequence':
     case 'exr-sequence':
+    case 'tiff-sequence':
+    case 'dpx-sequence':
       return 'zip';
     // Both HDR deliveries are MP4s; a ".hdr10" file has never existed.
     case 'hdr10':

@@ -26,6 +26,7 @@
 #include "engine_frames.hpp"
 #include "fonts.hpp"
 #include "exr_write.hpp"
+#include "tiff_dpx_write.hpp"
 #include "ffmetadata.hpp"
 #include "frame_convert.hpp"
 #include "hdr_convert.hpp"
@@ -763,8 +764,9 @@ bool parse_job(const Json& j, JobSpec& out, std::string& error) {
         return false;
       }
     }
-    if (!plugin && s != "png" && s != "jpg" && s != "exr" && s != "png-zip" && s != "jpg-zip" && s != "exr-zip") {
-      error = "job: \"sequence\" must be png, jpg, exr, or their -zip forms";
+    const std::string_view base = s.ends_with("-zip") ? std::string_view(s).substr(0, s.size() - 4) : std::string_view(s);
+    if (!plugin && base != "png" && base != "jpg" && base != "exr" && base != "tiff" && base != "dpx") {
+      error = "job: \"sequence\" must be png, jpg, exr, tiff, dpx, or their -zip forms";
       return false;
     }
     out.sequence = s;
@@ -1039,6 +1041,9 @@ int run_export(const std::string& jobPath) {
   const bool asZip = job.sequence.size() > 4 && job.sequence.ends_with("-zip");
   const bool asExr = job.sequence == "exr" || job.sequence == "exr-zip";
   const bool asJpg = job.sequence == "jpg" || job.sequence == "jpg-zip";
+  const bool asTiff = job.sequence == "tiff" || job.sequence == "tiff-zip";
+  const bool asDpx = job.sequence == "dpx" || job.sequence == "dpx-zip";
+  const char* seqExt = asExr ? ".exr" : asJpg ? ".jpg" : asTiff ? ".tif" : asDpx ? ".dpx" : ".png";
   const bool viaPlugin = job.sequence.starts_with("plugin:");  // P7c
   std::string bin = job.encodeBin.value_or("");
   std::vector<std::string> args = job.encodeArgs;
@@ -1108,7 +1113,7 @@ int run_export(const std::string& jobPath) {
   } else if (sequence) {
     std::error_code ec;
     if (asZip) {
-      const char* zipName = asExr ? "frames.exr.zip" : asJpg ? "frames.jpg.zip" : "frames.png.zip";
+      const std::string zipName = std::string("frames") + seqExt + ".zip";
       zipOpen = zip.open(u8path(job.workDir) / zipName);
       if (!zipOpen) {
         ctl.emit(error_line(false, "the sequence archive could not be created"));
@@ -1147,7 +1152,7 @@ int run_export(const std::string& jobPath) {
     } else if (sequence) {
       std::string name = std::to_string(f.index);
       if (name.size() < 5) name.insert(0, 5 - name.size(), '0');
-      name = "frame_" + name + (asExr ? ".exr" : asJpg ? ".jpg" : ".png");
+      name = "frame_" + name + seqExt;
       std::vector<std::uint8_t> bytes;
       if (asExr) {
         const auto row = wpx * (plan.depth == 16 ? 8U : 4U);
@@ -1156,6 +1161,10 @@ int run_export(const std::string& jobPath) {
         // integers (half_surface_to_rgba64) — not the half-float surface itself.
         target_to_half_rgba(f.rgba, wpx, hpx, row, plan.depth == 16 ? LinearFormat::unorm16 : LinearFormat::unorm8, half);
         bytes = encode_exr_half(half, wpx, hpx);
+      } else if (asTiff) {
+        bytes = encode_tiff_rgba(f.rgba, wpx, hpx, plan.depth);
+      } else if (asDpx) {
+        bytes = encode_dpx10_rgb(f.rgba, wpx, hpx, plan.depth);
       } else if (asJpg) {
         if (!encode_jpeg_rgba8(f.rgba, wpx, hpx, 0.92F, bytes)) return false;
       } else if (!encode_png_rgba8(f.rgba, wpx, hpx, bytes)) {

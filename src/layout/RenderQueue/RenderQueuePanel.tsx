@@ -45,6 +45,8 @@ function formatLabel(format: OutputFormat): string | undefined {
     'png-sequence': t('renderQueue.format.pngSequence', 'PNG Sequence'),
     'jpg-sequence': t('renderQueue.format.jpgSequence', 'JPEG Sequence'),
     'exr-sequence': t('renderQueue.format.exrSequence', 'EXR Sequence'),
+    'tiff-sequence': t('renderQueue.format.tiffSequence', 'TIFF Sequence'),
+    'dpx-sequence': t('renderQueue.format.dpxSequence', 'DPX Sequence'),
   };
   return labels[format];
 }

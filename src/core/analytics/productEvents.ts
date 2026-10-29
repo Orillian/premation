@@ -174,7 +174,7 @@ function isNoise(err: unknown): boolean {
 }
 
 const BUILTIN_FORMATS = new Set([
-  'png', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'wav', 'json', 'edl', 'otio',
+  'png', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'tiff-sequence', 'dpx-sequence', 'wav', 'json', 'edl', 'otio',
   'fcpxml', 'ale', 'mogrt', 'lottie', 'webm', 'mp4', 'gif', 'mov', 'hdr10', 'hlg',
 ]);
 

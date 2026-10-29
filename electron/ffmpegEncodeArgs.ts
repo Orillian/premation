@@ -18,7 +18,17 @@
 
 export type EncodeFormat = 'mp4' | 'webm' | 'gif' | 'mov';
 export type EncodeQuality = 'high' | 'medium' | 'draft';
-export type EncodeProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444';
+/**
+ * The QuickTime (.mov) codec and its profile, as AE's QuickTime output module
+ * picks them: the ProRes family, or Avid DNxHR (resolution-independent, the
+ * Avid / broadcast intermediate). Only ProRes 4444 carries alpha.
+ */
+export type EncodeProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444' | DnxhrProfile;
+export type DnxhrProfile = 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
+
+export function isDnxhrProfile(v: unknown): v is DnxhrProfile {
+  return v === 'dnxhr-lb' || v === 'dnxhr-sq' || v === 'dnxhr-hq' || v === 'dnxhr-hqx' || v === 'dnxhr-444';
+}
 
 /**
  * Hardware H.264/HEVC encoders ffmpeg can drive, when the build and the
@@ -26,7 +36,16 @@ export type EncodeProresProfile = 'proxy' | 'lt' | '422' | 'hq' | '4444';
  * encoded with so far, and "same CRF, same bytes" only holds for it.
  */
 export type HwVideoEncoder = 'h264_nvenc' | 'hevc_nvenc' | 'h264_qsv' | 'h264_videotoolbox';
-export type VideoEncoder = 'libx264' | HwVideoEncoder;
+/**
+ * The software encoders an mp4 can be written with: H.264 (the default),
+ * HEVC (libx265) and AV1 (SVT-AV1). The bundled ffmpeg has all three.
+ */
+export type SwVideoEncoder = 'libx264' | 'libx265' | 'libsvtav1';
+export type VideoEncoder = SwVideoEncoder | HwVideoEncoder;
+
+export function isSwVideoEncoder(v: unknown): v is SwVideoEncoder {
+  return v === 'libx264' || v === 'libx265' || v === 'libsvtav1';
+}
 
 export const HW_VIDEO_ENCODERS: ReadonlyArray<{ id: HwVideoEncoder; label: string; platforms: NodeJS.Platform[] }> = [
   { id: 'h264_nvenc', label: 'NVIDIA NVENC (H.264)', platforms: ['win32', 'linux'] },
@@ -101,6 +120,23 @@ export function videoEncoderArgs(encoder: VideoEncoder, quality: EncodeQuality =
       return [
         '-c:v', 'h264_videotoolbox',
         '-q:v', quality === 'draft' ? '45' : quality === 'medium' ? '55' : '65',
+      ];
+    // x265's CRF lands about four steps below x264's for the same look
+    // (20 / 24 / 28, the tiers the HDR encode already uses).
+    case 'libx265':
+      return [
+        '-c:v', 'libx265',
+        '-preset', quality === 'draft' ? 'veryfast' : 'medium',
+        '-crf', quality === 'draft' ? '28' : quality === 'medium' ? '24' : '20',
+        '-x265-params', 'log-level=error',
+      ];
+    // SVT-AV1: CRF 0–63; presets 0 (slowest) … 13. 6 is the quality/speed
+    // knee for delivery masters; the draft tier trades it for a fast preview.
+    case 'libsvtav1':
+      return [
+        '-c:v', 'libsvtav1',
+        '-preset', quality === 'draft' ? '10' : quality === 'medium' ? '8' : '6',
+        '-crf', quality === 'draft' ? '40' : quality === 'medium' ? '34' : '28',
       ];
     case 'libx264':
     default:
@@ -272,6 +308,19 @@ export function buildEncodeArgs(o: EncodeArgsOptions): string[] {
       // .mov); the 422 family halves the file for opaque delivery/edit
       // handoff, matching what AE's output modules offer.
       const profile = o.proresProfile ?? '4444';
+      if (isDnxhrProfile(profile)) {
+        // DNxHR: LB/SQ/HQ are 8-bit 4:2:2, HQX 10-bit 4:2:2, 444 10-bit 4:4:4.
+        // Resolution-independent, but 4:2:2 needs an even width (evenScale).
+        const pixFmt = profile === 'dnxhr-444' ? 'yuv444p10le' : profile === 'dnxhr-hqx' ? 'yuv422p10le' : 'yuv422p';
+        return [
+          ...base,
+          '-c:v', 'dnxhd', '-profile:v', profile.replace('-', '_'), '-pix_fmt', pixFmt,
+          '-vf', evenScale,
+          ...(hasAudio ? ['-c:a', 'pcm_s16le', '-shortest'] : []),
+          ...chapterMap,
+          o.out,
+        ];
+      }
       const proresArgs: Record<string, [string, string]> = {
         proxy: ['0', 'yuv422p10le'],
         lt: ['1', 'yuv422p10le'],
@@ -298,7 +347,7 @@ export function buildEncodeArgs(o: EncodeArgsOptions): string[] {
         // encoder swaps in its own quality knob — see `videoEncoderArgs`.
         ...videoEncoderArgs(encoder, o.quality),
         // HEVC in MP4 needs the `hvc1` tag or QuickTime/Safari refuse the file.
-        ...(encoder === 'hevc_nvenc' ? ['-tag:v', 'hvc1'] : []),
+        ...(encoder === 'hevc_nvenc' || encoder === 'libx265' ? ['-tag:v', 'hvc1'] : []),
         // Quality-targeted, but bounded — see `h264MaxRate`.
         ...(o.frame
           ? ((rate: number) => ['-maxrate', String(rate), '-bufsize', String(rate * 2)])(
@@ -309,7 +358,9 @@ export function buildEncodeArgs(o: EncodeArgsOptions): string[] {
         // deliberately rather than stumbled into, and stated in the composition
         // settings dialog so nobody first discovers it in a delivered file.
         // mov (ProRes 4444) and webm (VP9) keep alpha.
-        '-pix_fmt', 'yuv420p',
+        // AV1 is encoded 10-bit even from 8-bit frames: SVT-AV1's own advice,
+        // it costs nothing in size and removes banding in soft gradients.
+        '-pix_fmt', encoder === 'libsvtav1' ? 'yuv420p10le' : 'yuv420p',
         // Streaming-friendly: without faststart the moov atom lands at the
         // end and browsers refuse to play the file until it fully downloads.
         '-movflags', '+faststart',

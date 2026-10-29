@@ -34,7 +34,17 @@ import { activeCompIdNow } from '@hooks/useMirror';
 import { settingsHasWorkArea, settingsSetWorkArea } from '@core/mirror/compFacts';
 import { flicksToSeconds } from '@motion/engine-api';
 import { runDataExport, isAbortError, isDataExportFormat, availableExportPresets, type ExportFormat, type ExportPreset } from '@core/export/exportManager';
-import { canEncodeLocally, PRORES_PROFILE_LABELS, type ExportQuality, type ProresProfile } from '@core/export/renderSpec';
+import {
+  canEncodeLocally,
+  MP4_CODEC_ENCODER,
+  MP4_CODEC_LABELS,
+  offersDeepColour,
+  PRORES_PROFILE_LABELS,
+  type ExportQuality,
+  type Mp4Codec,
+  type ProresProfile,
+  type RenderJobSpec,
+} from '@core/export/renderSpec';
 import { chaptersFromMarkers, formatCarriesChapters, type ExportChapter } from '@core/export/chapters';
 import { openHelp } from '@layout/Help/openHelp';
 import { exportSupervisorClient } from '@core/export/exportSupervisorClient';
@@ -83,18 +93,29 @@ function formatGroupLabel(group: { id: string; label: string }): string {
 }
 
 const MOVING: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif']);
-const QUEUEABLE: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence']);
-const RANGED: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'wav', 'png-sequence', 'jpg-sequence', 'exr-sequence']);
-const HAS_AUDIO: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'png-sequence', 'jpg-sequence', 'exr-sequence']);
-const ALPHA_FORMATS: ReadonlySet<ExportFormat> = new Set(['webm', 'mov', 'png', 'png-sequence', 'gif', 'exr-sequence']);
+const SEQUENCES: ReadonlyArray<ExportFormat> = ['png-sequence', 'jpg-sequence', 'exr-sequence', 'tiff-sequence', 'dpx-sequence'];
+const QUEUEABLE: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', ...SEQUENCES]);
+const RANGED: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'wav', ...SEQUENCES]);
+const HAS_AUDIO: ReadonlySet<ExportFormat> = new Set(['mp4', 'hdr10', 'hlg', 'webm', 'mov', ...SEQUENCES]);
+const ALPHA_FORMATS: ReadonlySet<ExportFormat> = new Set(['webm', 'mov', 'png', 'png-sequence', 'gif', 'exr-sequence', 'tiff-sequence']);
 const NON_RASTER: ReadonlySet<ExportFormat> = new Set(['wav', 'lottie', 'json', 'edl', 'otio', 'fcpxml', 'ale', 'mogrt']);
 
 /** Explicit order (not Object.keys — numeric-looking keys re-sort): alpha-capable first, then by size. */
 const PRORES_PROFILES: ReadonlyArray<ProresProfile> = ['4444', 'hq', '422', 'lt', 'proxy'];
+/** Avid DNxHR, highest first. */
+const DNXHR_PROFILES: ReadonlyArray<ProresProfile> = ['dnxhr-444', 'dnxhr-hqx', 'dnxhr-hq', 'dnxhr-sq', 'dnxhr-lb'];
+const MP4_CODECS: ReadonlyArray<Mp4Codec> = ['h264', 'hevc', 'av1'];
+
+const isDnxhr = (p: ProresProfile): boolean => p.startsWith('dnxhr-');
+
+/** The mp4 encoder a job is queued with: H.264 follows Settings ▸ Export (software or hardware). */
+function mp4EncoderFor(codec: Mp4Codec): NonNullable<RenderJobSpec['videoEncoder']> {
+  return codec === 'h264' ? usePreferenceStore.getState().exportVideoEncoder : MP4_CODEC_ENCODER[codec];
+}
 
 const FORMAT_GROUPS: ReadonlyArray<{ id: string; label: string; formats: ExportFormat[] }> = [
   { id: 'video', label: 'Video', formats: ['mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif'] },
-  { id: 'frames', label: 'Frames', formats: ['png-sequence', 'jpg-sequence', 'exr-sequence', 'png'] },
+  { id: 'frames', label: 'Frames', formats: [...SEQUENCES, 'png'] },
   { id: 'audio', label: 'Audio', formats: ['wav'] },
   { id: 'editorial', label: 'Editorial', formats: ['otio', 'fcpxml', 'edl', 'ale'] },
   { id: 'data', label: 'Data', formats: ['lottie', 'json', 'mogrt'] },
@@ -189,6 +210,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       scaleIdx: 0,
       quality: 'high',
       proresProfile: '4444',
+      mp4Codec: 'h264',
       bitDepth: 8,
       // Seeded from the COMP's own setting: a user who set "Transparent
       // background" in Composition Settings got an opaque export (and preview)
@@ -205,6 +227,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
   const scaleIdx = useExportFormStore((s) => s.scaleIdx);
   const quality = useExportFormStore((s) => s.quality);
   const proresProfile = useExportFormStore((s) => s.proresProfile);
+  const mp4Codec = useExportFormStore((s) => s.mp4Codec);
   const bitDepth = useExportFormStore((s) => s.bitDepth);
   const transparent = useExportFormStore((s) => s.transparent);
   const chapters = useExportFormStore((s) => s.chapters);
@@ -274,7 +297,6 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     const outPath = await exportSupervisorClient.chooseOutputPath(outputName);
     if (!outPath) return;
     const chapterMarks = captureChapters();
-    const { exportVideoEncoder } = usePreferenceStore.getState();
     const range = format === 'png' ? { startSec: time, endSec: time + 1 / Math.max(1, fps) } : captureRange();
     try {
       await queueEngineRender({
@@ -287,8 +309,8 @@ export function useExportModel(duration: number, fps: number): ExportModel {
         range,
         quality,
         ...(format === 'mov' ? { proresProfile } : {}),
-        ...(format === 'mp4' ? { videoEncoder: exportVideoEncoder } : {}),
-        ...(format === 'mov' && bitDepth === 16 ? { bitDepth: 16 as const } : {}),
+        ...(format === 'mp4' ? { videoEncoder: mp4EncoderFor(mp4Codec) } : {}),
+        ...(offersDeepColour(format) && bitDepth === 16 ? { bitDepth: 16 as const } : {}),
         transparent: alpha,
         ...(chapterMarks.length ? { chapters: chapterMarks } : {}),
         ...pluginOptionsField(format),
@@ -298,7 +320,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
     } catch (err) {
       reportQueueFailure(err, t('export.form.queueFailed', 'The export could not be queued'));
     }
-  }, [outputName, captureChapters, captureRange, baseComp.id, compName, format, width, height, fps, time, quality, proresProfile, bitDepth, alpha]);
+  }, [outputName, captureChapters, captureRange, baseComp.id, compName, format, width, height, fps, time, quality, proresProfile, mp4Codec, bitDepth, alpha]);
 
   const doExport = useCallback(async (): Promise<void> => {
     const store = useExportFormStore.getState();
@@ -374,10 +396,10 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       transparent: alpha,
       quality,
       ...(format === 'mov' ? { proresProfile } : {}),
-      // F1: offered only on the engine export path; main's queue honours it (mov only).
-      ...(format === 'mov' && useExportFormStore.getState().bitDepth === 16 ? { bitDepth: 16 as const } : {}),
+      // F1: offered only on the engine export path, for the formats that keep 16 bits.
+      ...(offersDeepColour(format) && useExportFormStore.getState().bitDepth === 16 ? { bitDepth: 16 as const } : {}),
       // Captured at queue time, like the range — see RenderJobSpec.videoEncoder.
-      ...(format === 'mp4' ? { videoEncoder: usePreferenceStore.getState().exportVideoEncoder } : {}),
+      ...(format === 'mp4' ? { videoEncoder: mp4EncoderFor(mp4Codec) } : {}),
       ...(chapterMarks.length ? { chapters: chapterMarks } : {}),
       ...pluginOptionsField(format),
     });
@@ -393,7 +415,7 @@ export function useExportModel(duration: number, fps: number): ExportModel {
       });
     });
     return true;
-  }, [format, captureRange, captureChapters, compName, baseComp, width, height, fps, duration, alpha, quality, proresProfile]);
+  }, [format, captureRange, captureChapters, compName, baseComp, width, height, fps, duration, alpha, quality, proresProfile, mp4Codec]);
 
   const cancel = useCallback(() => {
     useExportFormStore.getState().abort?.abort();
@@ -424,6 +446,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
   const scaleIdx = useExportFormStore((s) => s.scaleIdx);
   const quality = useExportFormStore((s) => s.quality);
   const proresProfile = useExportFormStore((s) => s.proresProfile);
+  const mp4Codec = useExportFormStore((s) => s.mp4Codec);
   const transparent = useExportFormStore((s) => s.transparent);
   const chapters = useExportFormStore((s) => s.chapters);
   const rangeMode = useExportFormStore((s) => s.rangeMode);
@@ -469,7 +492,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
   );
   const writeChapters = chapters && supportsChapters && chapterCount > 0;
 
-  // 16 bits per channel: mov only, when main's engine export says it can.
+  // 16 bits per channel: mov and the EXR / TIFF / DPX sequences, when main's engine export says it can.
   const bitDepth = useExportFormStore((s) => s.bitDepth);
   const [bitDepth16, setBitDepth16] = useState(false);
   useEffect(() => {
@@ -477,7 +500,7 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
     void exportSupervisorClient.capabilities().then((c) => { if (!cancelled) setBitDepth16(c.bitDepth16); });
     return () => { cancelled = true; };
   }, []);
-  const offerBitDepth = format === 'mov' && bitDepth16 && shouldUseSupervisor(format);
+  const offerBitDepth = offersDeepColour(format) && bitDepth16 && shouldUseSupervisor(format);
 
   const frameCount = format === 'png' ? 1 : Math.max(1, Math.round(rangeDuration * fps));
   const QUALITY = qualityOptions();
@@ -672,7 +695,85 @@ export function ExportForm({ duration, fps, host }: ExportFormProps): JSX.Elemen
             </div>
           ) : null}
 
+          {format === 'mp4' ? (
+            <div className={styles.section}>
+              <div className={styles.label}>{t('export.form.videoCodec', 'Codec')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.videoCodec', 'Codec')}>
+                {MP4_CODECS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={mp4Codec === c}
+                    disabled={busy}
+                    className={cn(styles.segChip, mp4Codec === c && styles.segChipOn)}
+                    onClick={() => patch({ mp4Codec: c })}
+                  >
+                    {MP4_CODEC_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.fieldNote}>
+                {mp4Codec === 'hevc'
+                  ? t('export.form.hevcNote', 'Software HEVC (x265): about half the size of H.264 at the same quality. Slower to encode.')
+                  : mp4Codec === 'av1'
+                    ? t('export.form.av1Note', 'AV1 (SVT-AV1, 10-bit): the smallest files, for the web and modern players. Slowest to encode.')
+                    : t('export.form.h264Note', 'Plays everywhere. The encoder (software or hardware) is set in Settings ▸ Export.')}
+              </p>
+            </div>
+          ) : null}
+
           {format === 'mov' ? (
+            <div className={styles.section}>
+              <div className={styles.label}>{t('export.form.videoCodec', 'Codec')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.movCodec', 'QuickTime codec')}>
+                {(['prores', 'dnxhr'] as const).map((family) => (
+                  <button
+                    key={family}
+                    type="button"
+                    role="radio"
+                    aria-checked={isDnxhr(proresProfile) === (family === 'dnxhr')}
+                    disabled={busy}
+                    className={cn(styles.segChip, isDnxhr(proresProfile) === (family === 'dnxhr') && styles.segChipOn)}
+                    onClick={() => {
+                      if (isDnxhr(proresProfile) !== (family === 'dnxhr')) patch({ proresProfile: family === 'dnxhr' ? 'dnxhr-hq' : '4444' });
+                    }}
+                  >
+                    {family === 'dnxhr' ? 'Avid DNxHR' : 'Apple ProRes'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {format === 'mov' && isDnxhr(proresProfile) ? (
+            <div className={styles.section}>
+              <div className={styles.label}>{t('export.form.dnxhrProfile', 'DNxHR profile')}</div>
+              <div className={styles.seg} role="radiogroup" aria-label={t('export.form.dnxhrProfile', 'DNxHR profile')}>
+                {DNXHR_PROFILES.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    role="radio"
+                    aria-checked={proresProfile === p}
+                    disabled={busy}
+                    title={PRORES_PROFILE_LABELS[p]}
+                    className={cn(styles.segChip, proresProfile === p && styles.segChipOn)}
+                    onClick={() => patch({ proresProfile: p })}
+                  >
+                    {PRORES_PROFILE_LABELS[p].replace('DNxHR ', '')}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.fieldNote}>
+                {proresProfile === 'dnxhr-444' || proresProfile === 'dnxhr-hqx'
+                  ? t('export.form.dnxhr10Note', '10-bit, for finishing and grading. No alpha channel.')
+                  : t('export.form.dnxhr8Note', '8-bit 4:2:2, the Avid editing intermediate. No alpha channel.')}
+              </p>
+            </div>
+          ) : null}
+
+          {format === 'mov' && !isDnxhr(proresProfile) ? (
             <div className={styles.section}>
               <div className={styles.label}>{t('export.form.proresProfile', 'ProRes profile')}</div>
               <div className={styles.seg} role="radiogroup" aria-label={t('export.form.proresProfile', 'ProRes profile')}>

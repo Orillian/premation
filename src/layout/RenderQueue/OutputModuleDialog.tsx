@@ -8,7 +8,7 @@ import { Icon } from '@components/Icon';
 import { Button } from '@components/Button';
 import { DialogFooter, enterShouldConfirm } from '@components/Modal';
 import { OutputFormat } from '@stores/renderQueueStore';
-import { canEncodeLocally, PRORES_PROFILE_LABELS, type ExportQuality, type ProresProfile } from '@core/export/renderSpec';
+import { canEncodeLocally, offersDeepColour, PRORES_PROFILE_LABELS, type ExportQuality, type ProresProfile } from '@core/export/renderSpec';
 import { documentMirror } from '@stores/documentMirror';
 import { activeCompIdNow } from '@hooks/useMirror';
 import { exportSupervisorClient } from '@core/export/exportSupervisorClient';
@@ -54,11 +54,13 @@ function outputFormats(): ReadonlyArray<{ value: OutputFormat; label: string; de
     { value: 'png-sequence', label: t('renderQueue.format.pngSequence', 'PNG Sequence') },
     { value: 'jpg-sequence', label: t('renderQueue.format.jpgSequence', 'JPEG Sequence') },
     { value: 'exr-sequence', label: t('renderQueue.format.exrSequence', 'EXR Sequence') },
+    { value: 'tiff-sequence', label: t('renderQueue.format.tiffSequence', 'TIFF Sequence') },
+    { value: 'dpx-sequence', label: t('renderQueue.format.dpxSequence', 'DPX Sequence') },
   ];
 }
 
 /** Formats that carry an alpha channel — the rest cannot honour "transparent". */
-const ALPHA_FORMATS: ReadonlySet<OutputFormat> = new Set(['webm', 'mov', 'gif', 'png-sequence', 'exr-sequence']);
+const ALPHA_FORMATS: ReadonlySet<OutputFormat> = new Set(['webm', 'mov', 'gif', 'png-sequence', 'exr-sequence', 'tiff-sequence']);
 
 interface OutputModuleDialogProps {
   initialWidth: number;
@@ -104,7 +106,7 @@ export function OutputModuleDialog({
     void exportSupervisorClient.capabilities().then((c) => { if (!cancelled) setBitDepth16(c.bitDepth16); });
     return () => { cancelled = true; };
   }, []);
-  const offerBitDepth = format === 'mov' && bitDepth16 && shouldUseSupervisor(format);
+  const offerBitDepth = offersDeepColour(format) && bitDepth16 && shouldUseSupervisor(format);
   // MOV alpha only exists in 4444 — the 422 family has no alpha plane.
   const supportsAlpha = ALPHA_FORMATS.has(format) && (format !== 'mov' || proresProfile === '4444');
 

@@ -47,7 +47,7 @@ import { resolveFfmpegBinary } from './ffmpegBinary';
 import { formatBlocker } from './ffmpegHealth';
 import { ffmpegService } from './ffmpegService';
 import { explainExportFailure, FFMPEG_UNAVAILABLE_MESSAGE, type ExportErrorCode } from './exportFailure';
-import { isHwVideoEncoder } from './ffmpegEncodeArgs';
+import { isDnxhrProfile, isHwVideoEncoder } from './ffmpegEncodeArgs';
 
 /*
   ★ The three payload shapes below are DUPLICATED in src/types/motionEditor.d.ts
@@ -96,7 +96,7 @@ export interface ExportJobSpec {
   width?: number;
   height?: number;
   quality?: 'high' | 'medium' | 'draft';
-  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444';
+  proresProfile?: 'proxy' | 'lt' | '422' | 'hq' | '4444' | 'dnxhr-lb' | 'dnxhr-sq' | 'dnxhr-hq' | 'dnxhr-hqx' | 'dnxhr-444';
   transparent?: boolean;
   videoEncoder?: string;
   chapters?: unknown;
@@ -244,7 +244,7 @@ export function validateSpec(raw: unknown): ExportJobSpec {
     throw new Error('Export job: unknown quality.');
   }
   const prores = optStr('proresProfile');
-  if (prores !== undefined && !['proxy', 'lt', '422', 'hq', '4444'].includes(prores)) {
+  if (prores !== undefined && !['proxy', 'lt', '422', 'hq', '4444', 'dnxhr-lb', 'dnxhr-sq', 'dnxhr-hq', 'dnxhr-hqx', 'dnxhr-444'].includes(prores)) {
     throw new Error('Export job: unknown ProRes profile.');
   }
   const out: ExportJobSpec = {
@@ -883,6 +883,15 @@ function createEngineLauncher(root: string): EngineLauncher {
           const resolved = await probe.resolveVideoEncoder(spec.videoEncoder);
           if (resolved.fallbackReason) deps.log(`job ${jobId}: ${resolved.fallbackReason}`);
           next = { ...spec, videoEncoder: resolved.encoder };
+        }
+        // A codec chosen per output module (HEVC, AV1, DNxHR) has no fallback:
+        // the user asked for that codec, so a build without it fails here, before the render.
+        const codecEncoder = spec.format === 'mp4' && (spec.videoEncoder === 'libx265' || spec.videoEncoder === 'libsvtav1')
+          ? spec.videoEncoder
+          : spec.format === 'mov' && isDnxhrProfile(spec.proresProfile) ? 'dnxhd' : null;
+        if (codecEncoder && !(await probe.has(codecEncoder))) {
+          deps.log(`job ${jobId}: refused before render — ffmpeg has no ${codecEncoder}`);
+          return { kind: 'failed' as const, message: `${FFMPEG_UNAVAILABLE_MESSAGE} (the FFmpeg in use has no ${codecEncoder} encoder)` };
         }
         if (spec.format === 'hdr10' || spec.format === 'hlg') {
           // HEVC carries the HDR10 metadata; without libx265 the stream is H.264 High 10, tagged.

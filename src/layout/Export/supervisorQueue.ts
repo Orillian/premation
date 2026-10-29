@@ -33,7 +33,7 @@ import { t } from '@core/i18n';
 
 /** The formats the engine export writes. The document exports (Lottie, JSON, the cut lists) are `runDataExport`'s. */
 const ENGINE_FORMATS: ReadonlySet<string> = new Set<ExportFormat>([
-  'mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'png', 'wav',
+  'mp4', 'hdr10', 'hlg', 'webm', 'mov', 'gif', 'png-sequence', 'jpg-sequence', 'exr-sequence', 'tiff-sequence', 'dpx-sequence', 'png', 'wav',
 ]);
 
 /** Whether the engine export writes `format`. */

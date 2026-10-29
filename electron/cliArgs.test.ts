@@ -184,6 +184,17 @@ describe('parseCli — validation that saves a wasted render', () => {
 
   it('refuses an unknown ProRes profile', () => {
     expect(parseCli(['render', 'a.motion', '--format', 'mov', '--prores', '8888']).kind).toBe('error');
+    expect(parseCli(['render', 'a.motion', '--format', 'mov', '--prores', 'dnxhr-hq']).kind).toBe('error');
+  });
+
+  it('--codec: DNxHR for mov, HEVC / AV1 for mp4, nothing elsewhere', () => {
+    expect(job(parseCli(['render', 'a.motion', '--format', 'mov', '--codec', 'dnxhr-hqx'])).proresProfile).toBe('dnxhr-hqx');
+    expect(job(parseCli(['render', 'a.motion', '--format', 'mp4', '--codec', 'hevc'])).videoEncoder).toBe('libx265');
+    expect(job(parseCli(['render', 'a.motion', '--format', 'mp4', '--codec', 'av1'])).videoEncoder).toBe('libsvtav1');
+    expect(parseCli(['render', 'a.motion', '--format', 'mp4', '--codec', 'dnxhr-hq']).kind).toBe('error');
+    expect(parseCli(['render', 'a.motion', '--format', 'mov', '--codec', 'dnxhr-hq', '--prores', 'hq']).kind).toBe('error');
+    expect(parseCli(['render', 'a.motion', '--format', 'webm', '--codec', 'av1']).kind).toBe('error');
+    expect(job(parseCli(['render', 'a.motion', '--format', 'dpx-sequence'])).format).toBe('dpx-sequence');
   });
 
   it('refuses a second project path rather than picking one', () => {
@@ -430,6 +441,8 @@ describe('extensionFor', () => {
   it('zips every image sequence', () => {
     expect(extensionFor('png-sequence')).toBe('zip');
     expect(extensionFor('exr-sequence')).toBe('zip');
+    expect(extensionFor('tiff-sequence')).toBe('zip');
+    expect(extensionFor('dpx-sequence')).toBe('zip');
   });
 });
 

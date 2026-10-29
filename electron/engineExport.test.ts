@@ -119,6 +119,28 @@ describe('engineIneligible', () => {
   });
 });
 
+describe('TIFF / DPX sequences and the per-module codecs', () => {
+  it('maps every sequence to the engine name and its archive', () => {
+    const exe = abs('bin', 'premation-engine.exe');
+    for (const [format, seq, ext] of [['tiff-sequence', 'tiff-zip', 'tif'], ['dpx-sequence', 'dpx-zip', 'dpx'], ['exr-sequence', 'exr-zip', 'exr']] as const) {
+      expect(engineIneligible(spec({ format }), exe)).toBeNull();
+      expect(engineJobFile(spec({ format, bitDepth: 16 }), abs('w'))).toMatchObject({ sequence: seq, audio: false, depth: 16 });
+      expect(engineOutputFile(abs('w'), format)).toBe(path.join(abs('w'), `frames.${ext}.zip`));
+    }
+  });
+
+  it('HEVC / AV1 go through as the mp4 encoder; DNxHR is a mov; HDR refuses DNxHR', () => {
+    const exe = abs('bin', 'premation-engine.exe');
+    expect(engineEncodeArgs(spec({ videoEncoder: 'libx265' }), pre, abs('w', 'out.mp4'))).toEqual(expect.arrayContaining(['-c:v', 'libx265', '-tag:v', 'hvc1']));
+    expect(engineEncodeArgs(spec({ videoEncoder: 'libsvtav1' }), pre, abs('w', 'out.mp4'))).toEqual(expect.arrayContaining(['-c:v', 'libsvtav1']));
+    expect(engineEncodeArgs(spec({ videoEncoder: 'bogus' }), pre, abs('w', 'out.mp4'))).toEqual(expect.arrayContaining(['-c:v', 'libx264']));
+    const mov = spec({ format: 'mov', proresProfile: 'dnxhr-hqx' });
+    expect(engineEncodeArgs(mov, pre, abs('w', 'out.mov'))).toEqual(expect.arrayContaining(['-c:v', 'dnxhd', '-profile:v', 'dnxhr_hqx']));
+    expect(engineOutputFile(abs('w'), 'mov')).toBe(path.join(abs('w'), 'out.mov'));
+    expect(engineIneligible({ ...mov, hdr: 'pq' }, exe)).toMatch(/not DNxHR/);
+  });
+});
+
 describe('the job file and the encoder command line', () => {
   it('passes the spec through and skips the mix for a GIF', () => {
     const job = engineJobFile(spec(), abs('w'));

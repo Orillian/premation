@@ -19,6 +19,7 @@
 #include "jpeg_write.hpp"
 #include "png_write.hpp"
 #include "project_open.hpp"
+#include "tiff_dpx_write.hpp"
 #include "wav_write.hpp"
 #include "zip_write.hpp"
 
@@ -325,4 +326,90 @@ TEST_CASE("a 16-bit EXR frame converts the writer's RGBA64 integers, not half bi
   std::memcpy(out8.data(), half8.data(), half8.size());
   CHECK(out8[0] == 0x3C00);
   CHECK(out8[1] == ex::float_to_half(128.0 / 255.0));
+}
+
+namespace {
+std::uint32_t le32(const std::vector<std::uint8_t>& b, std::size_t at) {
+  return b[at] | (std::uint32_t{b[at + 1]} << 8) | (std::uint32_t{b[at + 2]} << 16) | (std::uint32_t{b[at + 3]} << 24);
+}
+std::uint16_t le16(const std::vector<std::uint8_t>& b, std::size_t at) {
+  return static_cast<std::uint16_t>(b[at] | (b[at + 1] << 8));
+}
+std::uint32_t be32(const std::vector<std::uint8_t>& b, std::size_t at) {
+  return (std::uint32_t{b[at]} << 24) | (std::uint32_t{b[at + 1]} << 16) | (std::uint32_t{b[at + 2]} << 8) | b[at + 3];
+}
+// A baseline-TIFF reader's view of one tag (the first IFD), or 0xFFFFFFFF.
+std::uint32_t tiff_tag(const std::vector<std::uint8_t>& b, std::uint16_t tag) {
+  const std::uint32_t ifd = le32(b, 4);
+  const std::uint16_t n = le16(b, ifd);
+  for (std::uint16_t i = 0; i < n; ++i) {
+    const std::size_t e = ifd + 2 + std::size_t{i} * 12;
+    if (le16(b, e) != tag) continue;
+    return le16(b, e + 2) == 3 && le32(b, e + 4) == 1 ? le16(b, e + 8) : le32(b, e + 8);
+  }
+  return 0xFFFFFFFFU;
+}
+}  // namespace
+
+TEST_CASE("TIFF frames: baseline RGBA, straight alpha, 8 and 16 bits", "[export][tiff]") {
+  const std::vector<std::uint8_t> px8 = {255, 0, 0, 255, 0, 128, 255, 64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  const auto t8 = ex::encode_tiff_rgba(px8, 3, 2, 8);
+  REQUIRE(t8.size() > 8);
+  CHECK(t8[0] == 'I');
+  CHECK(le16(t8, 2) == 42);
+  CHECK(tiff_tag(t8, 256) == 3);
+  CHECK(tiff_tag(t8, 257) == 2);
+  CHECK(tiff_tag(t8, 259) == 1);        // uncompressed
+  CHECK(tiff_tag(t8, 262) == 2);        // RGB
+  CHECK(tiff_tag(t8, 277) == 4);
+  CHECK(tiff_tag(t8, 338) == 2);        // unassociated alpha
+  const std::uint32_t bitsAt = tiff_tag(t8, 258);
+  for (int i = 0; i < 4; ++i) CHECK(le16(t8, bitsAt + static_cast<std::uint32_t>(i) * 2) == 8);
+  const std::uint32_t at = tiff_tag(t8, 273);
+  REQUIRE(tiff_tag(t8, 279) == px8.size());
+  REQUIRE(at + px8.size() == t8.size());
+  CHECK(std::memcmp(t8.data() + at, px8.data(), px8.size()) == 0);
+  // IFD entries are in ascending tag order (readers may binary-search them).
+  const std::uint32_t ifd = le32(t8, 4);
+  for (std::uint16_t i = 1; i < le16(t8, ifd); ++i) CHECK(le16(t8, ifd + 2 + i * 12U) > le16(t8, ifd + 2 + (i - 1) * 12U));
+
+  std::vector<std::uint8_t> px16(1 * 1 * 8);
+  for (std::size_t i = 0; i < px16.size(); ++i) px16[i] = static_cast<std::uint8_t>(0x10 + i);
+  const auto t16 = ex::encode_tiff_rgba(px16, 1, 1, 16);
+  CHECK(le16(t16, tiff_tag(t16, 258)) == 16);
+  CHECK(tiff_tag(t16, 279) == 8);
+  CHECK(std::memcmp(t16.data() + tiff_tag(t16, 273), px16.data(), 8) == 0);
+}
+
+TEST_CASE("DPX frames: SMPTE 268M header, 10-bit RGB method A", "[export][dpx]") {
+  const std::vector<std::uint8_t> px8 = {255, 0, 128, 255, 0, 255, 1, 0};
+  const auto d = ex::encode_dpx10_rgb(px8, 2, 1, 8);
+  REQUIRE(d.size() == 2048 + 2 * 4);
+  CHECK(be32(d, 0) == 0x53445058U);     // SDPX
+  CHECK(be32(d, 4) == 2048);            // image data offset
+  CHECK(std::string(reinterpret_cast<const char*>(d.data() + 8), 4) == "V2.0");
+  CHECK(be32(d, 16) == d.size());
+  CHECK(be32(d, 772) == 2);
+  CHECK(be32(d, 776) == 1);
+  CHECK(d[800] == 50);                  // RGB
+  CHECK(d[803] == 10);
+  CHECK(((d[804] << 8) | d[805]) == 1);  // method A
+  CHECK(be32(d, 808) == 2048);
+  const std::uint32_t p0 = be32(d, 2048);
+  CHECK((p0 >> 22) == 1023);
+  CHECK(((p0 >> 12) & 0x3FF) == 0);
+  CHECK(((p0 >> 2) & 0x3FF) == (128U * 1023U + 127U) / 255U);
+  CHECK((p0 & 3U) == 0);
+  const std::uint32_t p1 = be32(d, 2052);
+  CHECK((p1 >> 22) == 0);
+  CHECK(((p1 >> 12) & 0x3FF) == 1023);
+  CHECK(((p1 >> 2) & 0x3FF) == 4);      // 1/255 → 4/1023
+
+  // 16-bit input keeps more than 8 bits of precision: 0x8000 → 512, not 514.
+  const std::vector<std::uint8_t> px16 = {0x00, 0x80, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF};
+  const auto d16 = ex::encode_dpx10_rgb(px16, 1, 1, 16);
+  const std::uint32_t q = be32(d16, 2048);
+  CHECK((q >> 22) == 512);
+  CHECK(((q >> 12) & 0x3FF) == 1023);
+  CHECK(((q >> 2) & 0x3FF) == 0);
 }
